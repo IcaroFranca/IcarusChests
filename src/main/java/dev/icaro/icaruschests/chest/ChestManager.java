@@ -3,8 +3,10 @@ package dev.icaro.icaruschests.chest;
 import dev.icaro.icaruschests.model.ChestLocation;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
+import dev.icaro.icaruschests.persistence.PersistedUpgrade;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
+import dev.icaro.icaruschests.upgrade.UpgradeType;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -72,12 +74,19 @@ public final class ChestManager {
                 });
     }
 
-    private void applyLoadedUpgrades(IcarusChest chest, Map<Integer, String> bySlot) {
+    private void applyLoadedUpgrades(IcarusChest chest, Map<Integer, PersistedUpgrade> bySlot) {
         ItemStack[] upgrades = chest.getUpgrades();
-        bySlot.forEach((slotIndex, typeName) -> {
-            if (slotIndex >= 0 && slotIndex < upgrades.length) {
-                UpgradeRegistry.parseType(typeName).ifPresent(type -> upgrades[slotIndex] = upgradeRegistry.createItem(type));
+        bySlot.forEach((slotIndex, persisted) -> {
+            if (slotIndex < 0 || slotIndex >= upgrades.length) {
+                return;
             }
+            UpgradeRegistry.parseType(persisted.upgradeType()).ifPresent(type -> {
+                ItemStack item = upgradeRegistry.createItem(type);
+                if (type == UpgradeType.FILTER && persisted.dataJson() != null) {
+                    UpgradeRegistry.setFilterMaterials(item, UpgradeRegistry.parseFilterMaterials(persisted.dataJson()));
+                }
+                upgrades[slotIndex] = item;
+            });
         });
     }
 
