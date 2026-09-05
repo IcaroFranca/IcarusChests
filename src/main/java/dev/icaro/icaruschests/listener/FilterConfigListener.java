@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -34,11 +35,14 @@ import java.util.Set;
  * installed on.
  *
  * <p>The picker never touches the player's real inventory: clicking a slot
- * with an item on the cursor stamps a one-item "ghost" copy of that type
- * into the slot (the cursor itself is untouched — nothing is taken), and
- * clicking an occupied slot with an empty cursor just erases the ghost
- * (nothing is given back, since nothing was ever really moved). This is a
- * type picker, not storage.
+ * with an item on the cursor (or shift-clicking an item from the player's
+ * own inventory below) stamps a one-item "ghost" copy of that Material into
+ * a slot — the cursor and the player's real inventory are never touched, so
+ * nothing is ever actually taken. Clicking an occupied slot with an empty
+ * cursor just erases the ghost there — nothing is given back, since nothing
+ * was ever really moved in the first place. Each Material can only occupy
+ * one slot at a time (a duplicate placement attempt is silently ignored) —
+ * this is a type picker, not storage.
  */
 public final class FilterConfigListener implements Listener {
 
@@ -65,24 +69,31 @@ public final class FilterConfigListener implements Listener {
         if (!(event.getInventory().getHolder() instanceof FilterConfigHolder)) {
             return;
         }
-        if (event.getClickedInventory() != event.getInventory()) {
-            return; // a click in the player's own inventory below: doesn't touch the picker at all
-        }
-        event.setCancelled(true);
+        Inventory gui = event.getInventory();
 
+        if (event.getClickedInventory() != gui) {
+            // A click in the player's own inventory below: only a shift-click hands us an item to
+            // represent — anything else (reordering their own stuff) doesn't touch the picker.
+            if (event.getClick() == ClickType.SHIFT_LEFT || event.getClick() == ClickType.SHIFT_RIGHT) {
+                event.setCancelled(true);
+                ItemStack shifted = event.getCurrentItem();
+                if (shifted != null && shifted.getType() != Material.AIR) {
+                    addGhostToFirstEmptySlot(gui, shifted.getType());
+                }
+            }
+            return;
+        }
+
+        event.setCancelled(true);
         ItemStack cursor = event.getCursor();
         boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
         ItemStack current = event.getCurrentItem();
         boolean slotEmpty = current == null || current.getType() == Material.AIR;
 
         if (!cursorEmpty) {
-            // Stamp a one-item ghost of whatever's on the cursor — the cursor (and the player's
-            // real inventory) is never touched, so this never consumes anything.
-            ItemStack ghost = cursor.clone();
-            ghost.setAmount(1);
-            event.getInventory().setItem(event.getSlot(), ghost);
+            addGhostAt(gui, event.getSlot(), cursor.getType());
         } else if (!slotEmpty) {
-            event.getInventory().setItem(event.getSlot(), null);
+            gui.setItem(event.getSlot(), null);
         }
     }
 
@@ -91,6 +102,41 @@ public final class FilterConfigListener implements Listener {
         if (event.getView().getTopInventory().getHolder() instanceof FilterConfigHolder) {
             event.setCancelled(true); // ghosts are placed one click at a time; no drag-spreading
         }
+    }
+
+    /** Stamps a ghost of {@code material} into {@code slot}, unless that Material already occupies a different slot. */
+    private void addGhostAt(Inventory gui, int slot, Material material) {
+        if (isMaterialElsewhere(gui, material, slot)) {
+            return;
+        }
+        gui.setItem(slot, new ItemStack(material));
+    }
+
+    /** Stamps a ghost of {@code material} into the first empty slot, unless that Material is already represented or the picker is full. */
+    private void addGhostToFirstEmptySlot(Inventory gui, Material material) {
+        if (isMaterialElsewhere(gui, material, -1)) {
+            return;
+        }
+        for (int i = 0; i < FilterConfigGui.SIZE; i++) {
+            ItemStack item = gui.getItem(i);
+            if (item == null || item.getType() == Material.AIR) {
+                gui.setItem(i, new ItemStack(material));
+                return;
+            }
+        }
+    }
+
+    private boolean isMaterialElsewhere(Inventory gui, Material material, int excludedSlot) {
+        for (int i = 0; i < FilterConfigGui.SIZE; i++) {
+            if (i == excludedSlot) {
+                continue;
+            }
+            ItemStack item = gui.getItem(i);
+            if (item != null && item.getType() == material) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @EventHandler
