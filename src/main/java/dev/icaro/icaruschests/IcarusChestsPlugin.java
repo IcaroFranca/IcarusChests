@@ -11,6 +11,7 @@ import dev.icaro.icaruschests.listener.ChestGuiListener;
 import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
+import dev.icaro.icaruschests.listener.FilterConfigListener;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.upgrade.TierUpgradeService;
@@ -137,6 +138,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
+        pluginManager.registerEvents(new FilterConfigListener(), this);
     }
 
     public ChestManager getChestManager() {
