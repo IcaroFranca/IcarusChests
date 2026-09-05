@@ -13,3 +13,8 @@ upgrade-kit-heads:
   gold: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmYyNTc3MjY5MzdiYTE4MTQwOTYyMDllYjdiNTE2OGM2NjU1MmQyNWU0MWIxZTUxNGFhNmQzMWM0ZDNhYTZkYyJ9fX0="
   diamond: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvM2FkYmNmYjI4ODIxNWE4ZDE1M2RkZmRkYjM2YmQyZWQ3YTM3YWRkMzU2NjJmODYzM2Y3MTFkMmRmY2ViNDE3YyJ9fX0="
   netherite: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvODU2MjU2MzhkNDFhYTJkM2JiNGNmZjkzYWFkNjBkOTdlOWMxZDUyYTA0NDExZmQxZmRjNjliZmIxZmRiNTllZSJ9fX0="
+
+# O mesmo esquema, mas para os icones dos upgrades encaixaveis (Filtro, Stack).
+upgrade-heads:
+  filter: ""
+  stack: ""

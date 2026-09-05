@@ -57,6 +57,19 @@ class ChestTierTest {
     }
 
     @Test
+    void upgradeSlotCountNeverDecreasesBetweenTiers() {
+        // TierUpgradeService resizes the upgrades array with a plain Arrays.copyOf
+        // on tier-up, which only works safely if this never shrinks.
+        ChestTier[] values = ChestTier.values();
+        for (int i = 1; i < values.length; i++) {
+            assertTrue(values[i].upgradeSlotCount() >= values[i - 1].upgradeSlotCount(),
+                    values[i] + " must have at least as many upgrade slots as " + values[i - 1]);
+        }
+        assertTrue(ChestTier.NORMAL.upgradeSlotCount() >= 1, "even the base tier should have at least one upgrade slot");
+        assertTrue(ChestTier.NETHERITE.upgradeSlotCount() <= ChestTier.MAX_UPGRADE_SLOTS);
+    }
+
+    @Test
     void tiersUpgradeInStrictSequentialOrder() {
         assertEquals(Optional.of(ChestTier.COPPER), ChestTier.NORMAL.next());
         assertEquals(Optional.of(ChestTier.IRON), ChestTier.COPPER.next());

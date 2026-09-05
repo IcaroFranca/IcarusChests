@@ -4,6 +4,7 @@ import dev.icaro.icaruschests.model.ChestLocation;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -51,11 +52,33 @@ public final class ChestManager {
     private final Map<UUID, IcarusChest> byId = new ConcurrentHashMap<>();
     private final Map<ChestLocation, UUID> idByLocation = new ConcurrentHashMap<>();
     private final ChestRepository chestRepository;
+    private final UpgradeRegistry upgradeRegistry;
     private final Plugin plugin;
 
-    public ChestManager(ChestRepository chestRepository, Plugin plugin) {
+    public ChestManager(ChestRepository chestRepository, UpgradeRegistry upgradeRegistry, Plugin plugin) {
         this.chestRepository = chestRepository;
+        this.upgradeRegistry = upgradeRegistry;
         this.plugin = plugin;
+    }
+
+    /** Async-hydrates {@code chest}'s upgrade slots from SQLite; call once right after registering a freshly reconstructed chest. */
+    private void hydrateUpgradesAsync(IcarusChest chest) {
+        chestRepository.loadUpgrades(chest.getId())
+                .thenAccept(bySlot -> Bukkit.getScheduler().runTask(plugin, () -> applyLoadedUpgrades(chest, bySlot)))
+                .exceptionally(ex -> {
+                    plugin.getLogger().log(Level.WARNING,
+                            "Falha ao carregar upgrades do bau " + chest.getId(), ex);
+                    return null;
+                });
+    }
+
+    private void applyLoadedUpgrades(IcarusChest chest, Map<Integer, String> bySlot) {
+        ItemStack[] upgrades = chest.getUpgrades();
+        bySlot.forEach((slotIndex, typeName) -> {
+            if (slotIndex >= 0 && slotIndex < upgrades.length) {
+                UpgradeRegistry.parseType(typeName).ifPresent(type -> upgrades[slotIndex] = upgradeRegistry.createItem(type));
+            }
+        });
     }
 
     public IcarusChest register(IcarusChest chest) {
@@ -144,6 +167,7 @@ public final class ChestManager {
         }
         register(chest);
         hydrateContentsAsync(chest);
+        hydrateUpgradesAsync(chest);
         return Optional.of(chest);
     }
 

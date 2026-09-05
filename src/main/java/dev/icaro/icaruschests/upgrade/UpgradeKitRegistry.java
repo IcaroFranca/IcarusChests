@@ -1,26 +1,22 @@
 package dev.icaro.icaruschests.upgrade;
 
-import com.destroystokyo.paper.profile.PlayerProfile;
-import com.destroystokyo.paper.profile.ProfileProperty;
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.util.CustomHeads;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Builds the consumable "upgrade kit" item for each {@link ChestTier} that
@@ -67,7 +63,7 @@ public final class UpgradeKitRegistry {
     public ItemStack createKit(ChestTier tier) {
         Optional<String> headTexture = configManager.upgradeKitHeadTexture(tier);
         ItemStack item = headTexture.isPresent()
-                ? customHeadIcon(headTexture.get())
+                ? CustomHeads.createHead(headTexture.get())
                 : new ItemStack(tier.upgradeMaterial().orElse(Material.CHEST));
 
         ItemMeta meta = item.getItemMeta();
@@ -80,16 +76,6 @@ public final class UpgradeKitRegistry {
                         .decoration(TextDecoration.ITALIC, false)
         ));
         meta.getPersistentDataContainer().set(NamespacedKeys.UPGRADE_KIT_TIER, PersistentDataType.INTEGER, tier.ordinal());
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack customHeadIcon(String base64Texture) {
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta meta = (SkullMeta) item.getItemMeta();
-        PlayerProfile profile = (PlayerProfile) Bukkit.createProfile(UUID.randomUUID());
-        profile.setProperty(new ProfileProperty("textures", base64Texture));
-        meta.setPlayerProfile(profile);
         item.setItemMeta(meta);
         return item;
     }
