@@ -24,17 +24,18 @@ public final class ChestRepository {
         this.database = database;
     }
 
-    /** Inserts a newly placed chest, or updates tier/link if the id already exists (e.g. re-registered after a reload). */
+    /** Inserts a newly placed (primary) chest, or updates its tier if the id already exists (e.g. after an upgrade). */
     public CompletableFuture<Void> insert(IcarusChest chest) {
         return database.submit(connection -> {
             long now = System.currentTimeMillis();
             ChestLocation location = chest.getLocation();
+            // linked_chest_id is currently unused: double-chest secondaries are pure PDC
+            // pointers with no row of their own (see ChestManager), so it's always NULL here.
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO chest(id, world_uuid, x, y, z, tier, linked_chest_id, owner_uuid, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         tier = excluded.tier,
-                        linked_chest_id = excluded.linked_chest_id,
                         updated_at = excluded.updated_at
                     """)) {
                 statement.setString(1, chest.getId().toString());
@@ -43,10 +44,9 @@ public final class ChestRepository {
                 statement.setInt(4, location.y());
                 statement.setInt(5, location.z());
                 statement.setInt(6, chest.getTier().ordinal());
-                statement.setString(7, chest.getLinkedChestId() != null ? chest.getLinkedChestId().toString() : null);
-                statement.setString(8, null); // owner_uuid: not tracked until a later milestone
+                statement.setString(7, null); // owner_uuid: not tracked until a later milestone
+                statement.setLong(8, now);
                 statement.setLong(9, now);
-                statement.setLong(10, now);
                 statement.executeUpdate();
             }
         });
