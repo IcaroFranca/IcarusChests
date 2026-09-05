@@ -148,7 +148,8 @@ public final class ChestGuiListener implements Listener {
         Map<Integer, String> bySlot = new HashMap<>();
         ItemStack[] upgrades = chest.getUpgrades();
         for (int i = 0; i < upgrades.length; i++) {
-            UpgradeRegistry.typeOf(upgrades[i]).ifPresent(type -> bySlot.put(i, type.name()));
+            int slotIndex = i;
+            UpgradeRegistry.typeOf(upgrades[i]).ifPresent(type -> bySlot.put(slotIndex, type.name()));
         }
         chestRepository.saveUpgrades(chest.getId(), bySlot).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING, "Falha ao persistir upgrades do bau " + chest.getId(), ex);
