@@ -24,7 +24,7 @@ public final class ChestRepository {
         this.database = database;
     }
 
-    /** Inserts a newly placed (primary) chest, or updates its tier if the id already exists (e.g. after an upgrade). */
+    /** Inserts a newly placed (primary) chest, or updates its tier/doubled state if the id already exists (e.g. after an upgrade or link). */
     public CompletableFuture<Void> insert(IcarusChest chest) {
         return database.submit(connection -> {
             long now = System.currentTimeMillis();
@@ -32,11 +32,12 @@ public final class ChestRepository {
             // linked_chest_id is currently unused: double-chest secondaries are pure PDC
             // pointers with no row of their own (see ChestManager), so it's always NULL here.
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO chest(id, world_uuid, x, y, z, tier, linked_chest_id, owner_uuid, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+                    INSERT INTO chest(id, world_uuid, x, y, z, tier, linked_chest_id, owner_uuid, created_at, updated_at, is_doubled)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         tier = excluded.tier,
-                        updated_at = excluded.updated_at
+                        updated_at = excluded.updated_at,
+                        is_doubled = excluded.is_doubled
                     """)) {
                 statement.setString(1, chest.getId().toString());
                 statement.setString(2, location.worldId().toString());
@@ -47,6 +48,7 @@ public final class ChestRepository {
                 statement.setString(7, null); // owner_uuid: not tracked until a later milestone
                 statement.setLong(8, now);
                 statement.setLong(9, now);
+                statement.setInt(10, chest.isDoubled() ? 1 : 0);
                 statement.executeUpdate();
             }
         });

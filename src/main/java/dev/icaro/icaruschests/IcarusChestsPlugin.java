@@ -129,7 +129,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private void registerListeners() {
         PluginManager pluginManager = getServer().getPluginManager();
         pluginManager.registerEvents(new ChestPlaceListener(chestManager, chestRepository, this), this);
-        pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler), this);
+        pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler, chestRepository, this), this);
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);

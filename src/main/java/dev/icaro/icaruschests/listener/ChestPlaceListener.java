@@ -20,6 +20,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -28,10 +29,12 @@ import java.util.logging.Level;
  * Tags every newly placed chest block as an {@link IcarusChest} at
  * {@link ChestTier#NORMAL} and persists its metadata row — unless it's
  * placed directly adjacent to an existing IcarusChest, in which case it
- * either links to it as a double chest's secondary half (same tier) or the
- * placement is rejected outright (different tier: vanilla would still
- * visually merge them, which would be misleading since the plugin only ever
- * treats it as a matched-tier pairing).
+ * either links to it as a double chest's secondary half (same tier, and only
+ * if that neighbor doesn't already have a partner — vanilla double chests
+ * are always exactly two blocks) or the placement is rejected outright
+ * (different tier: vanilla would still visually merge them, which would be
+ * misleading since the plugin only ever treats it as a matched-tier
+ * pairing). Linking doubles the primary's capacity on the spot.
  */
 public final class ChestPlaceListener implements Listener {
 
@@ -98,6 +101,30 @@ public final class ChestPlaceListener implements Listener {
         state.getPersistentDataContainer().set(
                 NamespacedKeys.LINK_TARGET, PersistentDataType.STRING, primary.getLocation().encode());
         state.update(true);
+
+        // Doubling only ever grows the array, so this copyOf can't lose data —
+        // unlike unlinking (ChestBreakListener), which must drop overflow first.
+        int doubledCapacity = primary.getTier().totalCapacity() * 2;
+        primary.setContents(Arrays.copyOf(primary.getContents(), doubledCapacity));
+        primary.setDoubled(true);
+        primary.setDirty(true);
+        retagDoubled(primary.getLocation().toBlock(), true);
+        chestRepository.insert(primary).exceptionally(ex -> {
+            plugin.getLogger().log(Level.WARNING, "Falha ao persistir link do bau duplo " + primary.getId(), ex);
+            return null;
+        });
+        chestRepository.saveContents(primary).exceptionally(ex -> {
+            plugin.getLogger().log(Level.WARNING, "Falha ao persistir conteudo redimensionado do bau " + primary.getId(), ex);
+            return null;
+        });
+    }
+
+    private void retagDoubled(Block block, boolean doubled) {
+        if (!(block.getState() instanceof TileState state)) {
+            return;
+        }
+        state.getPersistentDataContainer().set(NamespacedKeys.DOUBLED, PersistentDataType.INTEGER, doubled ? 1 : 0);
+        state.update(true);
     }
 
     /**
@@ -105,7 +132,8 @@ public final class ChestPlaceListener implements Listener {
      * any. Only matches a neighbor that is ITSELF the primary (its resolved
      * chest's location equals its own) — never a neighbor that is already a
      * secondary pointing elsewhere, since vanilla double chests are always
-     * exactly two adjacent blocks, never a chain of three or more.
+     * exactly two adjacent blocks, never a chain of three or more — and never
+     * a primary that's already doubled (it already has its one partner).
      */
     private Optional<IcarusChest> findAdjacentPrimary(Block block) {
         for (BlockFace face : BlockFaces.HORIZONTAL) {
@@ -114,7 +142,12 @@ public final class ChestPlaceListener implements Listener {
                 continue;
             }
             Optional<IcarusChest> resolved = chestManager.getOrLoadFromBlock(neighbor);
-            if (resolved.isPresent() && ChestLocation.of(neighbor).equals(resolved.get().getLocation())) {
+            if (resolved.isEmpty()) {
+                continue;
+            }
+            IcarusChest candidate = resolved.get();
+            boolean neighborIsItselfThePrimary = ChestLocation.of(neighbor).equals(candidate.getLocation());
+            if (neighborIsItselfThePrimary && !candidate.isDoubled()) {
                 return resolved;
             }
         }

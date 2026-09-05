@@ -34,11 +34,15 @@ public final class NamespacedKeys {
      */
     public static NamespacedKey LINK_TARGET;
 
+    /** Tag on a double chest primary's own PDC: {@code 1} while it has a linked secondary, absent/{@code 0} otherwise. */
+    public static NamespacedKey DOUBLED;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
         UPGRADE_KIT_TIER = new NamespacedKey(plugin, "upgrade_kit_tier");
         NAV_ACTION = new NamespacedKey(plugin, "nav_action");
         LINK_TARGET = new NamespacedKey(plugin, "link_target");
+        DOUBLED = new NamespacedKey(plugin, "doubled");
     }
 }

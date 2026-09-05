@@ -10,6 +10,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.TileState;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -135,6 +136,12 @@ public final class ChestManager {
         }
 
         IcarusChest chest = new IcarusChest(UUID.fromString(chestIdRaw), ChestLocation.of(block), tier.get());
+        Integer doubledFlag = pdc.get(NamespacedKeys.DOUBLED, PersistentDataType.INTEGER);
+        if (doubledFlag != null && doubledFlag == 1) {
+            chest.setDoubled(true);
+            // Blank placeholder at the right (doubled) size; hydrateContentsAsync below fills in the real contents.
+            chest.setContents(new ItemStack[chest.effectiveTotalCapacity()]);
+        }
         register(chest);
         hydrateContentsAsync(chest);
         return Optional.of(chest);
@@ -156,7 +163,7 @@ public final class ChestManager {
     }
 
     private void hydrateContentsAsync(IcarusChest chest) {
-        chestRepository.loadContents(chest.getId(), chest.getTier().totalCapacity())
+        chestRepository.loadContents(chest.getId(), chest.effectiveTotalCapacity())
                 .thenAccept(loaded -> loaded.ifPresent(contents ->
                         Bukkit.getScheduler().runTask(plugin, () -> chest.setContents(contents))))
                 .exceptionally(ex -> {

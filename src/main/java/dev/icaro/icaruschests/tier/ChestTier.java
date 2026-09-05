@@ -1,8 +1,8 @@
 package dev.icaro.icaruschests.tier;
 
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -13,34 +13,41 @@ import java.util.Optional;
  *
  * <p>A vanilla {@code Inventory} of chest type is capped at 54 slots (6 rows)
  * by the client, so tiers above that capacity are split across multiple
- * navigable pages of up to {@link #MAX_SLOTS_PER_PAGE} slots instead of one
- * oversized inventory.
+ * navigable pages instead of one oversized inventory. Pages aren't
+ * necessarily uniform in size — {@link #pageSizes} lists each page's exact
+ * size (front-loaded: earlier pages are as large as possible), and they
+ * always sum to {@link #totalCapacity()}.
+ *
+ * <p>Linking two chests of the same tier into a double chest doubles
+ * whatever single-chest capacity applies at the time (see {@code
+ * IcarusChest#effectivePageSizes()}) — that doubling is per-chest-instance
+ * state, not part of this enum.
  */
 public enum ChestTier {
 
-    NORMAL("Normal", 27, 1, null, 0),
-    COPPER("Cobre", 36, 1, Material.COPPER_INGOT, 8),
-    IRON("Ferro", 45, 1, Material.IRON_INGOT, 8),
-    GOLD("Ouro", 54, 1, Material.GOLD_INGOT, 8),
-    DIAMOND("Diamante", 54, 2, Material.DIAMOND, 8),
-    NETHERITE("Netherite", 54, 3, Material.NETHERITE_INGOT, 4);
+    NORMAL("Normal", new int[]{27}, null, 0),
+    COPPER("Cobre", new int[]{45}, Material.COPPER_INGOT, 8),
+    IRON("Ferro", new int[]{54}, Material.IRON_INGOT, 8),
+    GOLD("Ouro", new int[]{54, 27}, Material.GOLD_INGOT, 8),
+    DIAMOND("Diamante", new int[]{54, 54}, Material.DIAMOND, 8),
+    NETHERITE("Netherite", new int[]{54, 54, 27}, Material.NETHERITE_INGOT, 4);
 
     public static final int MAX_SLOTS_PER_PAGE = 54;
 
     private final String displayName;
-    private final int slotsPerPage;
-    private final int pages;
+    private final int[] pageSizes;
     private final Material upgradeMaterial;
     private final int upgradeAmount;
 
-    ChestTier(String displayName, int slotsPerPage, int pages, Material upgradeMaterial, int upgradeAmount) {
-        if (slotsPerPage <= 0 || slotsPerPage % 9 != 0 || slotsPerPage > MAX_SLOTS_PER_PAGE) {
-            throw new IllegalArgumentException("slotsPerPage must be a positive multiple of 9, at most "
-                    + MAX_SLOTS_PER_PAGE + ": " + slotsPerPage);
+    ChestTier(String displayName, int[] pageSizes, Material upgradeMaterial, int upgradeAmount) {
+        for (int size : pageSizes) {
+            if (size <= 0 || size % 9 != 0 || size > MAX_SLOTS_PER_PAGE) {
+                throw new IllegalArgumentException("each page size must be a positive multiple of 9, at most "
+                        + MAX_SLOTS_PER_PAGE + ": " + size);
+            }
         }
         this.displayName = displayName;
-        this.slotsPerPage = slotsPerPage;
-        this.pages = pages;
+        this.pageSizes = pageSizes;
         this.upgradeMaterial = upgradeMaterial;
         this.upgradeAmount = upgradeAmount;
     }
@@ -49,19 +56,19 @@ public enum ChestTier {
         return displayName;
     }
 
-    /** Number of slots in each page's GUI (a multiple of 9, at most {@link #MAX_SLOTS_PER_PAGE}). */
-    public int slotsPerPage() {
-        return slotsPerPage;
+    /** Size of each page in slots, front-loaded (earlier pages are as large as possible), always summing to {@link #totalCapacity()}. */
+    public int[] pageSizes() {
+        return pageSizes.clone();
     }
 
     /** Number of navigable pages this tier's inventory is split across. */
     public int pages() {
-        return pages;
+        return pageSizes.length;
     }
 
-    /** Total item capacity across all pages. */
+    /** Total item capacity across all pages, at this tier alone (not doubled). */
     public int totalCapacity() {
-        return slotsPerPage * pages;
+        return Arrays.stream(pageSizes).sum();
     }
 
     /** Material consumed by this tier's upgrade kit recipe, absent for {@link #NORMAL}. */
@@ -72,6 +79,23 @@ public enum ChestTier {
     /** Amount of {@link #upgradeMaterial()} consumed by this tier's upgrade kit recipe. */
     public int upgradeAmount() {
         return upgradeAmount;
+    }
+
+    /**
+     * The 3x3 crafting grid shape for this tier's upgrade kit recipe: a
+     * chest ({@code 'C'}) in the center, surrounded by {@link #upgradeAmount()}
+     * units of {@link #upgradeMaterial()} ({@code 'M'}). New upgrade amounts
+     * need a new case here — deliberately not derived automatically, so an
+     * unsupported amount fails loudly instead of crafting a silently wrong
+     * shape.
+     */
+    public String[] recipeShape() {
+        return switch (upgradeAmount) {
+            case 8 -> new String[]{"MMM", "MCM", "MMM"};
+            case 4 -> new String[]{" M ", "MCM", " M "};
+            default -> throw new IllegalStateException(
+                    "No crafting shape defined for upgrade amount " + upgradeAmount + " (tier " + this + ")");
+        };
     }
 
     /** The tier reached by applying an upgrade kit to a chest currently at this tier, if any. */

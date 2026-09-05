@@ -3,6 +3,7 @@ package dev.icaro.icaruschests.tier;
 import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,19 +31,24 @@ class ChestTierTest {
     @Test
     void capacitiesMatchTheDesignedProgression() {
         assertEquals(27, ChestTier.NORMAL.totalCapacity());
-        assertEquals(36, ChestTier.COPPER.totalCapacity());
-        assertEquals(45, ChestTier.IRON.totalCapacity());
-        assertEquals(54, ChestTier.GOLD.totalCapacity());
+        assertEquals(45, ChestTier.COPPER.totalCapacity());
+        assertEquals(54, ChestTier.IRON.totalCapacity());
+        assertEquals(81, ChestTier.GOLD.totalCapacity());
         assertEquals(108, ChestTier.DIAMOND.totalCapacity());
-        assertEquals(162, ChestTier.NETHERITE.totalCapacity());
+        assertEquals(135, ChestTier.NETHERITE.totalCapacity());
     }
 
     @Test
-    void slotsPerPageNeverExceedsTheVanillaChestLimit() {
+    void pageSizesAreValidAndSumToTotalCapacity() {
         for (ChestTier tier : ChestTier.values()) {
-            assertTrue(tier.slotsPerPage() <= ChestTier.MAX_SLOTS_PER_PAGE,
-                    tier + " has more slots per page than a vanilla chest inventory allows");
-            assertEquals(0, tier.slotsPerPage() % 9, tier + "'s slotsPerPage must be a multiple of 9");
+            int[] pageSizes = tier.pageSizes();
+            assertEquals(tier.pages(), pageSizes.length);
+            assertEquals(tier.totalCapacity(), Arrays.stream(pageSizes).sum());
+            for (int size : pageSizes) {
+                assertTrue(size <= ChestTier.MAX_SLOTS_PER_PAGE,
+                        tier + " has a page bigger than a vanilla chest inventory allows");
+                assertEquals(0, size % 9, tier + "'s page sizes must each be a multiple of 9");
+            }
         }
     }
 
@@ -76,11 +82,32 @@ class ChestTierTest {
 
     @Test
     void upgradeKitKeyIsLowercaseAndUnique() {
-        long distinctKeys = java.util.Arrays.stream(ChestTier.values())
+        long distinctKeys = Arrays.stream(ChestTier.values())
                 .map(ChestTier::upgradeKitKey)
                 .distinct()
                 .count();
         assertEquals(ChestTier.values().length, distinctKeys, "every tier must have a unique upgrade kit key");
         assertFalse(ChestTier.COPPER.upgradeKitKey().contains(" "), "recipe keys can't contain spaces");
+    }
+
+    @Test
+    void recipeShapeHasAChestInTheCenterAndTheRightAmountOfMaterial() {
+        for (ChestTier tier : ChestTier.values()) {
+            if (tier.upgradeMaterial().isEmpty()) {
+                continue;
+            }
+            String[] shape = tier.recipeShape();
+            assertEquals(3, shape.length, tier + " recipe shape must be a 3-row grid");
+            for (String row : shape) {
+                assertEquals(3, row.length(), tier + " recipe row must be 3 characters wide");
+            }
+            assertEquals('C', shape[1].charAt(1), tier + "'s recipe must have a chest in the center slot");
+
+            long materialCount = shape[0].chars().filter(c -> c == 'M').count()
+                    + shape[1].chars().filter(c -> c == 'M').count()
+                    + shape[2].chars().filter(c -> c == 'M').count();
+            assertEquals(tier.upgradeAmount(), materialCount,
+                    tier + "'s recipe shape must use exactly upgradeAmount() material slots");
+        }
     }
 }
