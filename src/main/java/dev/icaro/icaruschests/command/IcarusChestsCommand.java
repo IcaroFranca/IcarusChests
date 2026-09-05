@@ -88,7 +88,8 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
         sender.sendMessage(Component.text("Baú IcarusChests em (" + loc.getBlockX() + ", " + loc.getBlockY() + ", "
                 + loc.getBlockZ() + ")", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  Tier: " + c.getTier().displayName()
-                        + " (" + c.getTier().totalCapacity() + " slots, " + c.getTier().pages() + " página(s))",
+                        + (c.isDoubled() ? " (duplo)" : "")
+                        + " (" + c.effectiveTotalCapacity() + " slots, " + c.pages() + " página(s))",
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("  Id: " + c.getId(), NamedTextColor.GRAY));
         return true;

@@ -8,7 +8,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.ShapelessRecipe;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -30,7 +30,11 @@ public final class UpgradeKitRegistry {
         this.plugin = plugin;
     }
 
-    /** Registers a shapeless crafting recipe for every tier that defines an upgrade material. */
+    /**
+     * Registers a shaped crafting recipe for every tier that defines an
+     * upgrade material: a chest in the center slot, surrounded by the tier's
+     * upgrade material (see {@link ChestTier#recipeShape()}).
+     */
     public void registerRecipes() {
         for (ChestTier tier : ChestTier.values()) {
             tier.upgradeMaterial().ifPresent(material -> registerRecipe(tier, material));
@@ -39,8 +43,10 @@ public final class UpgradeKitRegistry {
 
     private void registerRecipe(ChestTier tier, Material material) {
         NamespacedKey key = new NamespacedKey(plugin, tier.upgradeKitKey());
-        ShapelessRecipe recipe = new ShapelessRecipe(key, createKit(tier));
-        recipe.addIngredient(tier.upgradeAmount(), material);
+        ShapedRecipe recipe = new ShapedRecipe(key, createKit(tier));
+        recipe.shape(tier.recipeShape());
+        recipe.setIngredient('M', material);
+        recipe.setIngredient('C', Material.CHEST);
         plugin.getServer().addRecipe(recipe);
     }
 
