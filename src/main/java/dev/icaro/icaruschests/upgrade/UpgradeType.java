@@ -73,4 +73,14 @@ public enum UpgradeType {
             default -> Optional.empty();
         };
     }
+
+    /** The type whose {@link #key()} equals {@code key}, if any — used to map a crafted recipe's {@code NamespacedKey} back to its type. */
+    public static Optional<UpgradeType> fromRecipeKey(String key) {
+        for (UpgradeType type : values()) {
+            if (type.key().equals(key)) {
+                return Optional.of(type);
+            }
+        }
+        return Optional.empty();
+    }
 }
