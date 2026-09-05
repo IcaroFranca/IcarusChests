@@ -2,6 +2,7 @@ package dev.icaro.icaruschests.command;
 
 import dev.icaro.icaruschests.IcarusChestsPlugin;
 import dev.icaro.icaruschests.gui.GuiFactory;
+import dev.icaro.icaruschests.gui.RecipeBookRegistry;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
@@ -23,22 +24,26 @@ import java.util.Optional;
 
 /**
  * Root command for IcarusChests: {@code ping} (health check), {@code info}
- * (debug: reports the tier of the chest the player is looking at), and the
- * admin-only {@code give}/{@code reload}.
+ * (debug: reports the tier of the chest the player is looking at), {@code
+ * recipebook} (hands over the Recipe Book item — see {@code
+ * RecipeBookRegistry}), and the admin-only {@code give}/{@code reload}.
  */
 public final class IcarusChestsCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("ping", "info", "give", "reload");
+    private static final List<String> SUBCOMMANDS = List.of("ping", "info", "give", "reload", "recipebook");
     private static final int INFO_MAX_DISTANCE = 6;
     private static final String ADMIN_PERMISSION = "icaruschests.admin";
     private static final String INFO_PERMISSION = "icaruschests.info";
+    private static final String RECIPE_BOOK_PERMISSION = "icaruschests.recipebook";
 
     private final IcarusChestsPlugin plugin;
     private final UpgradeKitRegistry upgradeKitRegistry;
+    private final RecipeBookRegistry recipeBookRegistry;
 
-    public IcarusChestsCommand(IcarusChestsPlugin plugin, UpgradeKitRegistry upgradeKitRegistry) {
+    public IcarusChestsCommand(IcarusChestsPlugin plugin, UpgradeKitRegistry upgradeKitRegistry, RecipeBookRegistry recipeBookRegistry) {
         this.plugin = plugin;
         this.upgradeKitRegistry = upgradeKitRegistry;
+        this.recipeBookRegistry = recipeBookRegistry;
     }
 
     @Override
@@ -54,6 +59,7 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             case "info" -> handleInfo(sender);
             case "give" -> handleGive(sender, args);
             case "reload" -> handleReload(sender);
+            case "recipebook" -> handleRecipeBook(sender, args);
             default -> {
                 sender.sendMessage(Component.text("Subcomando desconhecido: " + args[0], NamedTextColor.RED));
                 yield true;
@@ -135,6 +141,39 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
         return true;
     }
 
+    private boolean handleRecipeBook(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(RECIPE_BOOK_PERMISSION)) {
+            sender.sendMessage(Component.text("Você não tem permissão para isso.", NamedTextColor.RED));
+            return true;
+        }
+
+        Optional<Player> target = resolveTarget(sender, args, 1);
+        if (target.isEmpty()) {
+            return true; // resolveTarget already messaged the sender
+        }
+
+        target.get().getInventory().addItem(RecipeBookRegistry.createBookItem());
+        sender.sendMessage(Component.text("Livro de Receitas entregue a " + target.get().getName() + ".", NamedTextColor.GREEN));
+        return true;
+    }
+
+    /** {@code args[argIndex]} if present, else {@code sender} itself (must be a player). Messages the sender and returns empty on failure. */
+    private Optional<Player> resolveTarget(CommandSender sender, String[] args, int argIndex) {
+        if (args.length > argIndex) {
+            Player target = plugin.getServer().getPlayerExact(args[argIndex]);
+            if (target == null) {
+                sender.sendMessage(Component.text("Jogador offline ou inexistente: " + args[argIndex], NamedTextColor.RED));
+                return Optional.empty();
+            }
+            return Optional.of(target);
+        }
+        if (sender instanceof Player player) {
+            return Optional.of(player);
+        }
+        sender.sendMessage(Component.text("Especifique um jogador ao usar este comando pelo console.", NamedTextColor.RED));
+        return Optional.empty();
+    }
+
     private boolean handleReload(CommandSender sender) {
         if (!sender.hasPermission(ADMIN_PERMISSION)) {
             sender.sendMessage(Component.text("Você não tem permissão para isso.", NamedTextColor.RED));
@@ -170,6 +209,9 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             return tiers;
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
+            return plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("recipebook")) {
             return plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList();
         }
         return List.of();
