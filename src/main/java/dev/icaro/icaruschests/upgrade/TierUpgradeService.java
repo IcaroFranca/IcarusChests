@@ -55,7 +55,8 @@ public final class TierUpgradeService {
     }
 
     private void apply(IcarusChest chest, ChestTier newTier) {
-        chest.setContents(Arrays.copyOf(chest.getContents(), newTier.totalCapacity()));
+        int newCapacity = newTier.totalCapacity() * (chest.isDoubled() ? 2 : 1);
+        chest.setContents(Arrays.copyOf(chest.getContents(), newCapacity));
         chest.setTier(newTier);
         chest.setDirty(true);
 

@@ -15,7 +15,7 @@ import java.sql.Statement;
  */
 public final class Migrations {
 
-    private static final int CURRENT_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
 
     private Migrations() {
     }
@@ -30,7 +30,10 @@ public final class Migrations {
             applyV1(connection);
             setVersion(connection, 1);
         }
-        // Future schema changes: "if (version < 2) { applyV2(connection); setVersion(connection, 2); }"
+        if (version < 2) {
+            applyV2(connection);
+            setVersion(connection, 2);
+        }
     }
 
     private static int currentVersion(Connection connection) throws SQLException {
@@ -95,6 +98,13 @@ public final class Migrations {
                         PRIMARY KEY (chest_id, attr_key)
                     )
                     """);
+        }
+    }
+
+    /** Adds double-chest tracking: {@code is_doubled} mirrors the primary block's PDC {@code DOUBLED} tag for debuggability/consistency. */
+    private static void applyV2(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE chest ADD COLUMN is_doubled INTEGER NOT NULL DEFAULT 0");
         }
     }
 }
