@@ -35,6 +35,25 @@ public final class UpgradeSlots {
         return best;
     }
 
+    /**
+     * Same as {@link #bestStackMultiplier(ItemStack[])} but pretending {@code excludedIndex}
+     * were empty — used to check what a chest's cap would drop to if a given Stack upgrade were
+     * removed, before actually removing it (see {@code ChestGuiListener}).
+     */
+    public static double bestStackMultiplierExcluding(ItemStack[] upgrades, int excludedIndex) {
+        double best = 1.0;
+        for (int i = 0; i < upgrades.length; i++) {
+            if (i == excludedIndex) {
+                continue;
+            }
+            Optional<UpgradeType> type = UpgradeRegistry.typeOf(upgrades[i]);
+            if (type.isPresent() && type.get().isStackUpgrade()) {
+                best = Math.max(best, type.get().stackMultiplier());
+            }
+        }
+        return best;
+    }
+
     /** The installed Filter upgrade item, if any — carries its own accepted-materials list in its PDC (see {@link UpgradeRegistry}). */
     public static Optional<ItemStack> filterItem(ItemStack[] upgrades) {
         for (ItemStack item : upgrades) {

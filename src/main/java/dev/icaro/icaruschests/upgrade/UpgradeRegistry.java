@@ -201,7 +201,8 @@ public final class UpgradeRegistry {
         return lore;
     }
 
-    private static String prettyName(Material material) {
+    /** A human-friendly rendering of a Material's enum name, e.g. {@code DIAMOND_BLOCK} → {@code "Diamond Block"}. */
+    public static String prettyName(Material material) {
         String[] words = material.name().toLowerCase(Locale.ROOT).split("_");
         StringBuilder builder = new StringBuilder();
         for (String word : words) {
