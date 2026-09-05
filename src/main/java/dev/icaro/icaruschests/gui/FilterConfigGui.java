@@ -11,9 +11,9 @@ import java.util.List;
 
 /**
  * Builds the 9-slot picker a player sees after right-clicking the air while
- * holding a Filter upgrade item: place an item of each type the Filter
- * should accept, close the window, done — see {@code FilterConfigListener}
- * for how the result gets read back and saved onto the item.
+ * holding a Filter upgrade item: click a slot while holding an item to drop
+ * a one-item ghost copy of its type there (the real item never leaves the
+ * player's hand — see {@code FilterConfigListener}), close the window, done.
  */
 public final class FilterConfigGui {
 
