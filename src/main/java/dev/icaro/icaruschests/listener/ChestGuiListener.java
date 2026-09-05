@@ -10,6 +10,8 @@ import dev.icaro.icaruschests.persistence.PersistedUpgrade;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -18,35 +20,41 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
 /**
- * Handles clicks and closes on IcarusChests GUIs:
+ * Handles clicks, drags and closes on IcarusChests GUIs:
  * <ul>
  *   <li>the scroll buttons (or the mouse wheel — see {@link #onHotbarScroll})
  *       sync the visible slots back into the chest before redrawing the same
  *       inventory at the new offset, no close/reopen, so no flicker;</li>
  *   <li>the chest's upgrade slots accept dragging a matching upgrade item in
  *       (installs it) or clicking with an empty cursor (removes it back to
- *       the cursor);</li>
+ *       the cursor) — removing an installed Stack upgrade is refused (with a
+ *       message naming what's blocking it) if some stored stack would end up
+ *       over the item's normal limit without it;</li>
  *   <li>a chest with a Filter upgrade installed only accepts item types on
  *       that Filter's own configured list (see {@code FilterConfigListener}
  *       — an unconfigured Filter accepts anything), and one with a Stack
  *       upgrade lets an existing stack keep growing past the item's normal
- *       limit, up to that tier's multiplier (see {@code UpgradeType}) —
- *       both only for direct left-clicks in this first version;
- *       shift-clicking from the player's own inventory still follows normal
- *       vanilla stacking rules.</li>
+ *       limit, up to that tier's multiplier (see {@code UpgradeType}) — both
+ *       cover left/right clicks and shift-clicks from the player's own
+ *       inventory, and dragging is at least blocked by the Filter; a
+ *       number-key hotbar swap onto a content slot is the one known gap
+ *       left in this version.</li>
  * </ul>
  */
 public final class ChestGuiListener implements Listener {
@@ -67,15 +75,24 @@ public final class ChestGuiListener implements Listener {
         if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
-        if (event.getClickedInventory() != topInventory) {
-            return; // a shift-click FROM the player's own inventory: see class docs for the current limitation
-        }
 
         Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
         if (maybeChest.isEmpty()) {
             return;
         }
         IcarusChest chest = maybeChest.get();
+
+        if (event.getClickedInventory() != topInventory) {
+            // A click in the player's OWN inventory — the only one of these that can put a new
+            // item into the chest is a shift-click, so that's the only one Filter/Stack need to
+            // watch for here; anything else (a plain click reordering the player's own items)
+            // never touches the chest at all.
+            if (event.getClick() == ClickType.SHIFT_LEFT || event.getClick() == ClickType.SHIFT_RIGHT) {
+                handleShiftDeposit(event, holder, chest);
+            }
+            return;
+        }
+
         int slot = event.getSlot();
 
         if (!GuiFactory.isControlSlot(chest, slot)) {
@@ -93,6 +110,39 @@ public final class ChestGuiListener implements Listener {
         // The rest of the control row (scroll buttons, indicator, filler) is off-limits either way.
         event.setCancelled(true);
         handleNavClick(event, holder, chest, topInventory);
+    }
+
+    /**
+     * A drag can smear a held stack across several content slots at once — vanilla's own math
+     * already keeps each slot within the item's normal limit (a drag can't reach a Stack
+     * upgrade's higher cap; that only happens via the single-slot paths above), so the only thing
+     * left to enforce here is the Filter: cancel the whole drag if it touches the chest's content
+     * area with a disallowed item type.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        Inventory topInventory = event.getView().getTopInventory();
+        if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+        IcarusChest chest = maybeChest.get();
+
+        boolean touchesContent = event.getRawSlots().stream()
+                .anyMatch(rawSlot -> rawSlot < topInventory.getSize() && !GuiFactory.isControlSlot(chest, rawSlot));
+        if (!touchesContent) {
+            return;
+        }
+
+        UpgradeSlots.filterItem(chest.getUpgrades()).ifPresent(filterItem -> {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem);
+            if (!accepted.isEmpty() && !accepted.contains(event.getOldCursor().getType())) {
+                event.setCancelled(true);
+            }
+        });
     }
 
     private void handleNavClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, Inventory topInventory) {
@@ -136,6 +186,17 @@ public final class ChestGuiListener implements Listener {
             int remaining = cursor.getAmount() - 1;
             event.setCursor(remaining > 0 ? withAmount(cursor, remaining) : null);
         } else if (cursorEmpty) {
+            Optional<UpgradeType> installedType = UpgradeRegistry.typeOf(installed);
+            if (installedType.isPresent() && installedType.get().isStackUpgrade()) {
+                double multiplierWithoutThis = UpgradeSlots.bestStackMultiplierExcluding(upgrades, slotIndex);
+                List<ItemStack> blocking = itemsOverCap(chest, multiplierWithoutThis);
+                if (!blocking.isEmpty()) {
+                    if (event.getWhoClicked() instanceof Player player) {
+                        player.sendMessage(blockingRemovalMessage(blocking));
+                    }
+                    return; // refuse the removal; nothing changes
+                }
+            }
             upgrades[slotIndex] = null;
             event.setCursor(installed);
         } else {
@@ -144,6 +205,29 @@ public final class ChestGuiListener implements Listener {
 
         persistUpgrades(chest);
         GuiFactory.populate(chest, holder, event.getView().getTopInventory());
+    }
+
+    /** Stored items that would exceed their own normal stack limit under {@code multiplier} — used to guard removing a Stack upgrade. */
+    private List<ItemStack> itemsOverCap(IcarusChest chest, double multiplier) {
+        List<ItemStack> blocking = new ArrayList<>();
+        for (ItemStack item : chest.getContents()) {
+            if (item == null || item.getType() == Material.AIR) {
+                continue;
+            }
+            int cap = (int) Math.floor(item.getMaxStackSize() * multiplier);
+            if (item.getAmount() > cap) {
+                blocking.add(item);
+            }
+        }
+        return blocking;
+    }
+
+    private Component blockingRemovalMessage(List<ItemStack> blocking) {
+        String itemList = blocking.stream()
+                .map(item -> item.getAmount() + "x " + UpgradeRegistry.prettyName(item.getType()))
+                .collect(Collectors.joining(", "));
+        return Component.text("Não é possível remover: sem esse upgrade, isso passaria do limite normal: " + itemList,
+                NamedTextColor.RED);
     }
 
     private void persistUpgrades(IcarusChest chest) {
@@ -165,8 +249,9 @@ public final class ChestGuiListener implements Listener {
     }
 
     private void handleContentSlotClick(InventoryClickEvent event, IcarusChest chest) {
-        if (event.getClick() != ClickType.LEFT) {
-            return; // Filter/Stack only cover plain left-click in this first version
+        ClickType click = event.getClick();
+        if (click != ClickType.LEFT && click != ClickType.RIGHT) {
+            return; // Filter/Stack cover left/right clicks and shift-clicks (see handleShiftDeposit); drag is handled separately
         }
         double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
         boolean stackUpgraded = stackMultiplier > 1.0;
@@ -181,12 +266,16 @@ public final class ChestGuiListener implements Listener {
         boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
 
         if (stackUpgraded && cursorEmpty && !slotEmpty && slotItem.getAmount() > slotItem.getMaxStackSize()) {
-            // Withdraw at most a normal stack at a time, leaving the rest — same as the mod this plugin is inspired by.
+            // Withdraw at most a normal stack at a time, leaving the rest — same as the mod this
+            // plugin is inspired by. Right-click's own "take half" still can't exceed that either.
             event.setCancelled(true);
-            int taking = Math.min(slotItem.getMaxStackSize(), slotItem.getAmount());
+            int taking = click == ClickType.LEFT
+                    ? Math.min(slotItem.getMaxStackSize(), slotItem.getAmount())
+                    : Math.min(slotItem.getMaxStackSize(), (slotItem.getAmount() + 1) / 2);
             int remaining = slotItem.getAmount() - taking;
             event.setCurrentItem(remaining > 0 ? withAmount(slotItem, remaining) : null);
             event.setCursor(withAmount(slotItem, taking));
+            resync(event);
             return;
         }
 
@@ -210,14 +299,95 @@ public final class ChestGuiListener implements Listener {
                 return;
             }
             int normalRoom = slotItem.getMaxStackSize() - slotItem.getAmount();
-            if (cursor.getAmount() <= normalRoom) {
+            int depositAmount = click == ClickType.LEFT ? cursor.getAmount() : 1; // right-click deposits exactly 1
+            if (depositAmount <= normalRoom) {
                 return; // within vanilla's own normal limit already; let default handling proceed
             }
             event.setCancelled(true);
-            int toMove = Math.min(spaceLeft, cursor.getAmount());
+            int toMove = Math.min(spaceLeft, depositAmount);
             event.setCurrentItem(withAmount(slotItem, slotItem.getAmount() + toMove));
             int cursorRemaining = cursor.getAmount() - toMove;
             event.setCursor(cursorRemaining > 0 ? withAmount(cursor, cursorRemaining) : null);
+            resync(event);
+        }
+    }
+
+    /**
+     * A shift-click from the player's own inventory hands the whole clicked stack to vanilla's
+     * own "find a slot for this" logic, which knows nothing about the Filter or a Stack upgrade's
+     * higher cap — so when either is active, this takes over that distribution by hand instead.
+     */
+    private void handleShiftDeposit(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
+        double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
+        boolean stackUpgraded = stackMultiplier > 1.0;
+        Optional<ItemStack> filterItem = UpgradeSlots.filterItem(chest.getUpgrades());
+        if (!stackUpgraded && filterItem.isEmpty()) {
+            return; // no special rule active; vanilla's own shift-transfer is already correct
+        }
+
+        ItemStack shifted = event.getCurrentItem();
+        if (shifted == null || shifted.getType() == Material.AIR) {
+            return;
+        }
+
+        if (filterItem.isPresent()) {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem.get());
+            if (!accepted.isEmpty() && !accepted.contains(shifted.getType())) {
+                event.setCancelled(true); // wrong item type: block the shift-click entirely
+                return;
+            }
+        }
+
+        if (!stackUpgraded) {
+            return; // filter allows it and there's no higher cap to respect: vanilla's transfer is fine
+        }
+
+        event.setCancelled(true);
+        ItemStack[] contents = chest.getContents();
+        int remaining = shifted.getAmount();
+
+        // First pass: top off any existing matching stack, up to the upgraded cap.
+        for (int i = 0; i < contents.length && remaining > 0; i++) {
+            ItemStack existing = contents[i];
+            if (existing != null && existing.isSimilar(shifted)) {
+                int cap = (int) Math.floor(existing.getMaxStackSize() * stackMultiplier);
+                int space = cap - existing.getAmount();
+                if (space > 0) {
+                    int toMove = Math.min(space, remaining);
+                    existing.setAmount(existing.getAmount() + toMove);
+                    remaining -= toMove;
+                }
+            }
+        }
+        // Second pass: fill empty slots, each up to the upgraded cap.
+        int emptySlotCap = (int) Math.floor(shifted.getMaxStackSize() * stackMultiplier);
+        for (int i = 0; i < contents.length && remaining > 0; i++) {
+            if (contents[i] == null) {
+                int toMove = Math.min(emptySlotCap, remaining);
+                contents[i] = withAmount(shifted, toMove);
+                remaining -= toMove;
+            }
+        }
+
+        int moved = shifted.getAmount() - remaining;
+        if (moved <= 0) {
+            return; // chest is entirely full even at the upgraded cap; nothing moved
+        }
+        chest.setDirty(true);
+        event.setCurrentItem(remaining > 0 ? withAmount(shifted, remaining) : null);
+        GuiFactory.populate(chest, holder, event.getView().getTopInventory());
+        resync(event);
+    }
+
+    /**
+     * Forces a full client resync after putting a slot or the cursor at an amount beyond the
+     * item's normal max stack size — without this, the client's own prediction can keep showing
+     * the old (normal-capped) count, or briefly show the same items in two places, until
+     * something else forces a redraw.
+     */
+    private void resync(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player) {
+            player.updateInventory();
         }
     }
 
