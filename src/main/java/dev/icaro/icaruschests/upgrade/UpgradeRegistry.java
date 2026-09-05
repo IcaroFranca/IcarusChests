@@ -9,6 +9,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.RecipeChoice;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -52,37 +53,13 @@ public final class UpgradeRegistry {
     private void registerRecipe(UpgradeType type) {
         NamespacedKey key = new NamespacedKey(plugin, type.key());
         ShapelessRecipe recipe = new ShapelessRecipe(key, createItem(type));
-        // Stack upgrades fill the whole 3x3 grid: 1 hopper + 2 ore blocks + 6 raw
-        // ingots/gems of that same tier, so the cost stands apart from a tier kit's.
-        switch (type) {
-            case FILTER -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(3, Material.PAPER);
-            }
-            case STACK_COPPER -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(2, Material.COPPER_BLOCK);
-                recipe.addIngredient(6, Material.COPPER_INGOT);
-            }
-            case STACK_IRON -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(2, Material.IRON_BLOCK);
-                recipe.addIngredient(6, Material.IRON_INGOT);
-            }
-            case STACK_GOLD -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(2, Material.GOLD_BLOCK);
-                recipe.addIngredient(6, Material.GOLD_INGOT);
-            }
-            case STACK_DIAMOND -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(2, Material.DIAMOND_BLOCK);
-                recipe.addIngredient(6, Material.DIAMOND);
-            }
-            case STACK_NETHERITE -> {
-                recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(2, Material.NETHERITE_BLOCK);
-                recipe.addIngredient(6, Material.NETHERITE_INGOT);
+        for (IngredientSpec spec : ingredientSpecs(type)) {
+            if (spec.exactPreviousTier() != null) {
+                // Requires the exact previous Stack tier item (not just "any Hopper") as an
+                // ingredient — upgrading a chest's Stack bonus consumes the one it replaces.
+                recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(spec.exactPreviousTier())));
+            } else {
+                recipe.addIngredient(spec.count(), spec.material());
             }
         }
         plugin.getServer().addRecipe(recipe);
@@ -102,14 +79,77 @@ public final class UpgradeRegistry {
         return item;
     }
 
+    /**
+     * Flat, per-item display list of {@code type}'s crafting ingredients (e.g. 6x diamond
+     * becomes 6 separate diamond stacks of 1) — built from the exact same {@link
+     * #ingredientSpecs(UpgradeType)} that {@link #registerRecipe(UpgradeType)} feeds into the
+     * real recipe, so the recipe book (see {@code RecipeBookRegistry}) can never drift from it.
+     */
+    public List<ItemStack> recipeIngredientItems(UpgradeType type) {
+        List<ItemStack> items = new ArrayList<>();
+        for (IngredientSpec spec : ingredientSpecs(type)) {
+            if (spec.exactPreviousTier() != null) {
+                items.add(createItem(spec.exactPreviousTier()));
+            } else {
+                for (int i = 0; i < spec.count(); i++) {
+                    items.add(new ItemStack(spec.material()));
+                }
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Filter: 1 Hopper + 3 Paper. Every Stack tier fills the whole 3x3 grid: the tier's own ore
+     * block x2, its raw ingot/gem x6, and — instead of a plain Hopper, except for Copper, the
+     * entry tier — the exact previous Stack tier item, so upgrading consumes the one it replaces.
+     */
+    private List<IngredientSpec> ingredientSpecs(UpgradeType type) {
+        if (type == UpgradeType.FILTER) {
+            return List.of(IngredientSpec.of(Material.HOPPER, 1), IngredientSpec.of(Material.PAPER, 3));
+        }
+        List<IngredientSpec> specs = new ArrayList<>();
+        specs.add(type.previousStackTier()
+                .map(IngredientSpec::exact)
+                .orElseGet(() -> IngredientSpec.of(Material.HOPPER, 1)));
+        specs.add(IngredientSpec.of(blockMaterial(type), 2));
+        specs.add(IngredientSpec.of(rawMaterial(type), 6));
+        return specs;
+    }
+
+    private record IngredientSpec(Material material, int count, UpgradeType exactPreviousTier) {
+        static IngredientSpec of(Material material, int count) {
+            return new IngredientSpec(material, count, null);
+        }
+
+        static IngredientSpec exact(UpgradeType previousTier) {
+            return new IngredientSpec(null, 1, previousTier);
+        }
+    }
+
     private Material fallbackMaterial(UpgradeType type) {
+        return type == UpgradeType.FILTER ? Material.HOPPER : blockMaterial(type);
+    }
+
+    private static Material blockMaterial(UpgradeType type) {
         return switch (type) {
-            case FILTER -> Material.HOPPER;
             case STACK_COPPER -> Material.COPPER_BLOCK;
             case STACK_IRON -> Material.IRON_BLOCK;
             case STACK_GOLD -> Material.GOLD_BLOCK;
             case STACK_DIAMOND -> Material.DIAMOND_BLOCK;
             case STACK_NETHERITE -> Material.NETHERITE_BLOCK;
+            case FILTER -> throw new IllegalArgumentException("Filter has no ore block");
+        };
+    }
+
+    private static Material rawMaterial(UpgradeType type) {
+        return switch (type) {
+            case STACK_COPPER -> Material.COPPER_INGOT;
+            case STACK_IRON -> Material.IRON_INGOT;
+            case STACK_GOLD -> Material.GOLD_INGOT;
+            case STACK_DIAMOND -> Material.DIAMOND;
+            case STACK_NETHERITE -> Material.NETHERITE_INGOT;
+            case FILTER -> throw new IllegalArgumentException("Filter has no raw material");
         };
     }
 
