@@ -23,9 +23,13 @@ public final class NamespacedKeys {
     /** Tag on an upgrade kit item's PDC identifying the target {@code ChestTier} ordinal. */
     public static NamespacedKey UPGRADE_KIT_TIER;
 
+    /** Tag on a GUI navigation button item's PDC identifying it as a page-switch control. */
+    public static NamespacedKey NAV_ACTION;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
         UPGRADE_KIT_TIER = new NamespacedKey(plugin, "upgrade_kit_tier");
+        NAV_ACTION = new NamespacedKey(plugin, "nav_action");
     }
 }
