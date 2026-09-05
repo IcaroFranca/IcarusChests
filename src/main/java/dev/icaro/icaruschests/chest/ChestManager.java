@@ -6,6 +6,8 @@ import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.TileState;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -20,8 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 /**
- * In-memory registry of known {@link IcarusChest}s, keyed both by id and by
- * location for O(1) lookup either way.
+ * In-memory registry of known {@link IcarusChest}s (always "primaries" — see
+ * below), keyed both by id and by location for O(1) lookup either way.
  *
  * <p>The block's own PDC tags remain the fast, synchronous way to tell "is
  * this one of ours, and what's its id/tier" (survives restarts on their own,
@@ -33,6 +35,15 @@ import java.util.logging.Level;
  * real contents once it completes. A GUI opened in the handful of ticks
  * between those two steps (only possible right after a fresh server start)
  * would see it as empty; this is a known, rare edge case for now.
+ *
+ * <p><b>Double chests:</b> a chest linked into a double chest has exactly one
+ * {@link IcarusChest} (the "primary", whichever half existed first). Its
+ * partner ("secondary") block carries only a {@code LINK_TARGET} PDC tag
+ * pointing at the primary's location — no id, no tier, no cache entry, no
+ * database row of its own. {@link #getOrLoadFromBlock(Block)} transparently
+ * resolves a secondary's block to the primary's {@code IcarusChest}, so every
+ * other caller (GUI, upgrades, breaking) never needs to know which physical
+ * half it was actually given.
  */
 public final class ChestManager {
 
@@ -74,10 +85,11 @@ public final class ChestManager {
     }
 
     /**
-     * Returns the cached chest at this location, falling back to
-     * reconstructing it from the block's own PDC tags when not cached (e.g.
-     * first touch after a server restart). Returns empty if the block is not
-     * tagged as an IcarusChest at all.
+     * Returns the (primary) chest for this block — resolving through a
+     * double chest's secondary pointer if needed — falling back to
+     * reconstructing it from PDC tags when not cached (e.g. first touch
+     * after a server restart). Empty if the block isn't part of an
+     * IcarusChest at all.
      */
     public Optional<IcarusChest> getOrLoadFromBlock(Block block) {
         ChestLocation location = ChestLocation.of(block);
@@ -88,6 +100,16 @@ public final class ChestManager {
         return loadFromBlock(block);
     }
 
+    /** Fast, PDC-only check for "is this a chest block we tagged" — no registration, no hydration, no world lookups. */
+    public boolean isTaggedChest(Block block) {
+        if (block.getType() != Material.CHEST || !(block.getState() instanceof TileState state)) {
+            return false;
+        }
+        PersistentDataContainer pdc = state.getPersistentDataContainer();
+        return pdc.has(NamespacedKeys.CHEST_ID, PersistentDataType.STRING)
+                || pdc.has(NamespacedKeys.LINK_TARGET, PersistentDataType.STRING);
+    }
+
     private Optional<IcarusChest> loadFromBlock(Block block) {
         // Chests are TileState (PersistentDataHolder), not just plain BlockState;
         // any other block (e.g. a player targeting stone) simply isn't one of ours.
@@ -95,6 +117,11 @@ public final class ChestManager {
             return Optional.empty();
         }
         PersistentDataContainer pdc = state.getPersistentDataContainer();
+
+        String linkTarget = pdc.get(NamespacedKeys.LINK_TARGET, PersistentDataType.STRING);
+        if (linkTarget != null) {
+            return resolveLinkTarget(linkTarget);
+        }
 
         String chestIdRaw = pdc.get(NamespacedKeys.CHEST_ID, PersistentDataType.STRING);
         Integer tierOrdinal = pdc.get(NamespacedKeys.TIER, PersistentDataType.INTEGER);
@@ -111,6 +138,21 @@ public final class ChestManager {
         register(chest);
         hydrateContentsAsync(chest);
         return Optional.of(chest);
+    }
+
+    private Optional<IcarusChest> resolveLinkTarget(String encodedLocation) {
+        Optional<ChestLocation> primaryLocation = ChestLocation.decode(encodedLocation);
+        if (primaryLocation.isEmpty()) {
+            return Optional.empty();
+        }
+        World world = primaryLocation.get().world();
+        if (world == null) {
+            return Optional.empty(); // primary's world isn't loaded; shouldn't normally happen for an adjacent block
+        }
+        // A secondary always points directly at a true primary (see
+        // ChestPlaceListener) — no pointer chains are ever created, so this
+        // single extra hop can't recurse further.
+        return getOrLoadFromBlock(primaryLocation.get().toBlock());
     }
 
     private void hydrateContentsAsync(IcarusChest chest) {

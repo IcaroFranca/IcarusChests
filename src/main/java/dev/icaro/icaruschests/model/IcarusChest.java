@@ -6,24 +6,22 @@ import org.bukkit.inventory.ItemStack;
 import java.util.UUID;
 
 /**
- * In-memory representation of a single tiered chest block. One instance
- * exists per physical chest block; a double chest is two linked instances
- * (see {@link #linkedChestId}), not one instance spanning both halves.
+ * In-memory representation of a single tiered chest ("primary"). A double
+ * chest's secondary half has no {@code IcarusChest} of its own — its block is
+ * tagged with a PDC pointer to the primary's location instead, and always
+ * resolves to this same instance (see {@code ChestManager}).
  *
  * <p>{@link #contents} is indexed globally across all pages
  * ({@code page * tier.slotsPerPage() + localSlot}); slots that a page's GUI
  * reserves for navigation buttons are simply never read from or written to,
  * so they permanently reduce usable capacity by one each (see
- * {@code GuiFactory}). Nothing here is persisted yet — SQLite-backed
- * load/save and {@code dirty}-triggered saving arrive in M4, so contents are
- * currently lost on server restart.
+ * {@code GuiFactory}).
  */
 public final class IcarusChest {
 
     private final UUID id;
     private final ChestLocation location;
     private ChestTier tier;
-    private UUID linkedChestId;
     private ItemStack[] contents;
     private boolean dirty;
 
@@ -50,25 +48,12 @@ public final class IcarusChest {
         this.tier = tier;
     }
 
-    /** Id of the other half of this double chest, or {@code null} if this is a single chest. */
-    public UUID getLinkedChestId() {
-        return linkedChestId;
-    }
-
-    public void setLinkedChestId(UUID linkedChestId) {
-        this.linkedChestId = linkedChestId;
-    }
-
-    public boolean isLinked() {
-        return linkedChestId != null;
-    }
-
     /** Full, globally-indexed backing array (size {@code tier.totalCapacity()}). Mutated in place by the GUI layer. */
     public ItemStack[] getContents() {
         return contents;
     }
 
-    /** Replaces the entire backing array, e.g. after hydrating from SQLite. Does not itself mark dirty. */
+    /** Replaces the entire backing array, e.g. after hydrating from SQLite or resizing on upgrade. Does not itself mark dirty. */
     public void setContents(ItemStack[] contents) {
         this.contents = contents;
     }
