@@ -180,12 +180,10 @@ public final class GuiFactory {
 
     private static ItemStack controlItem(IcarusChest chest, int column, boolean canScrollUp, boolean canScrollDown, int offset, int capacity) {
         if (column == 0 && canScrollUp) {
-            return navItem(Material.ARROW, "▲ Rolar para Cima",
-                    "Sobe uma fileira. A roda do mouse tambem funciona.", NavAction.SCROLL_UP);
+            return navItem(Material.ARROW, "▲ Rolar para Cima", "Sobe uma fileira.", NavAction.SCROLL_UP);
         }
         if (column == 8 && canScrollDown) {
-            return navItem(Material.ARROW, "▼ Rolar para Baixo",
-                    "Desce uma fileira. A roda do mouse tambem funciona.", NavAction.SCROLL_DOWN);
+            return navItem(Material.ARROW, "▼ Rolar para Baixo", "Desce uma fileira.", NavAction.SCROLL_DOWN);
         }
         if (column == 4) {
             return positionIndicator(offset, capacity);
