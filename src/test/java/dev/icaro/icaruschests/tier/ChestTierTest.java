@@ -39,17 +39,21 @@ class ChestTierTest {
     }
 
     @Test
-    void pageSizesAreValidAndSumToTotalCapacity() {
+    void totalCapacityIsAlwaysAMultipleOfARow() {
+        // The GUI scrolls a row (9 slots) at a time, so a capacity that isn't
+        // a clean multiple of 9 could never be fully reachable by scrolling.
         for (ChestTier tier : ChestTier.values()) {
-            int[] pageSizes = tier.pageSizes();
-            assertEquals(tier.pages(), pageSizes.length);
-            assertEquals(tier.totalCapacity(), Arrays.stream(pageSizes).sum());
-            for (int size : pageSizes) {
-                assertTrue(size <= ChestTier.MAX_SLOTS_PER_PAGE,
-                        tier + " has a page bigger than a vanilla chest inventory allows");
-                assertEquals(0, size % 9, tier + "'s page sizes must each be a multiple of 9");
-            }
+            assertEquals(0, tier.totalCapacity() % 9, tier + "'s capacity must be a multiple of 9");
         }
+    }
+
+    @Test
+    void everyTierHasADistinctTitleColor() {
+        long distinctColors = Arrays.stream(ChestTier.values())
+                .map(ChestTier::titleColor)
+                .distinct()
+                .count();
+        assertEquals(ChestTier.values().length, distinctColors, "every tier should have its own title color");
     }
 
     @Test

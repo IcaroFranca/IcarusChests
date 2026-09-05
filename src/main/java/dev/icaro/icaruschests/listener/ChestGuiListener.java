@@ -12,15 +12,16 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
 
 import java.util.Optional;
 
 /**
- * Handles clicks and closes on IcarusChests page GUIs: intercepts navigation
- * buttons before any normal item-move logic runs, and syncs whatever the
- * player left in the GUI back into the {@code IcarusChest}'s backing array on
- * every close (including the implicit close caused by switching pages).
+ * Handles clicks and closes on IcarusChests GUIs: the entire control row of a
+ * scrollable chest (the real scroll buttons, the position indicator, and its
+ * filler slots alike) is off-limits to normal item placement, and clicking
+ * an actual scroll button syncs the currently visible slots back into the
+ * chest before redrawing the same inventory at the new offset — no
+ * close/reopen, so no flicker. Every other slot behaves like a normal chest.
  */
 public final class ChestGuiListener implements Listener {
 
@@ -40,33 +41,34 @@ public final class ChestGuiListener implements Listener {
             return;
         }
 
-        ItemStack clicked = event.getCurrentItem();
-        if (!GuiFactory.isNavItem(clicked)) {
+        Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
+        if (maybeChest.isEmpty()) {
             return;
         }
+        IcarusChest chest = maybeChest.get();
 
-        // Always cancel clicks on nav buttons: they must never be picked up,
-        // moved or consumed like a regular item.
+        if (!GuiFactory.isControlSlot(chest, event.getSlot())) {
+            return; // a normal content slot: let default item-move logic run
+        }
+
+        // The whole control row is off-limits, real button or filler alike.
         event.setCancelled(true);
 
-        Optional<NavAction> action = GuiFactory.navAction(clicked);
-        if (action.isEmpty() || !(event.getWhoClicked() instanceof Player player)) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        Optional<NavAction> action = GuiFactory.navAction(event.getCurrentItem());
+        if (action.isEmpty()) {
             return;
         }
 
-        int newPage = holder.getPage() + (action.get() == NavAction.NEXT ? 1 : -1);
-        chestManager.get(holder.getChestId()).ifPresent(chest -> switchPage(player, chest, holder, topInventory, newPage));
-    }
-
-    private void switchPage(Player player, IcarusChest chest, IcarusChestHolder holder, Inventory currentTop, int newPage) {
-        if (newPage < 0 || newPage >= chest.getTier().pages()) {
-            return;
+        int newOffset = GuiFactory.scrollTarget(chest, holder.getScrollOffset(), action.get());
+        if (newOffset == holder.getScrollOffset()) {
+            return; // already at that edge
         }
-        // Sync the page being left before building the next one, so the next
-        // page's GUI (and the chest's backing array) reflect what the player
-        // just moved around, not stale data from when this page was opened.
-        GuiFactory.syncPageToChest(chest, holder.getPage(), currentTop);
-        GuiFactory.open(player, chest, newPage);
+
+        GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+        GuiFactory.scrollTo(chest, holder, topInventory, newOffset);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -75,6 +77,6 @@ public final class ChestGuiListener implements Listener {
             return;
         }
         chestManager.get(holder.getChestId())
-                .ifPresent(chest -> GuiFactory.syncPageToChest(chest, holder.getPage(), event.getInventory()));
+                .ifPresent(chest -> GuiFactory.syncVisibleToChest(chest, holder, event.getInventory()));
     }
 }
