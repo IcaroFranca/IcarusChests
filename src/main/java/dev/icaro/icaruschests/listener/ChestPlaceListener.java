@@ -7,7 +7,7 @@ import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
+import org.bukkit.block.TileState;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -45,7 +45,10 @@ public final class ChestPlaceListener implements Listener {
             return;
         }
 
-        BlockState state = block.getState();
+        // Chests are TileState (PersistentDataHolder), not just plain BlockState.
+        if (!(block.getState() instanceof TileState state)) {
+            return;
+        }
         UUID chestId = UUID.randomUUID();
 
         state.getPersistentDataContainer().set(NamespacedKeys.CHEST_ID, PersistentDataType.STRING, chestId.toString());

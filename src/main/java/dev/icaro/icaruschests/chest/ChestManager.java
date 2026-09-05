@@ -5,7 +5,7 @@ import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
+import org.bukkit.block.TileState;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -68,7 +68,11 @@ public final class ChestManager {
     }
 
     private Optional<IcarusChest> loadFromBlock(Block block) {
-        BlockState state = block.getState();
+        // Chests are TileState (PersistentDataHolder), not just plain BlockState;
+        // any other block (e.g. a player targeting stone) simply isn't one of ours.
+        if (!(block.getState() instanceof TileState state)) {
+            return Optional.empty();
+        }
         PersistentDataContainer pdc = state.getPersistentDataContainer();
 
         String chestIdRaw = pdc.get(NamespacedKeys.CHEST_ID, PersistentDataType.STRING);
