@@ -5,6 +5,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,6 +24,9 @@ public final class ConfigManager {
     private final JavaPlugin plugin;
     private long autosaveIntervalTicks = DEFAULT_AUTOSAVE_SECONDS * 20L;
     private final Map<ChestTier, String> upgradeKitHeadTextures = new EnumMap<>(ChestTier.class);
+    // Keyed by lowercase UpgradeType name rather than the enum itself: the upgrade
+    // package already depends on config, so config depending back on upgrade would cycle.
+    private final Map<String, String> upgradeHeadTextures = new HashMap<>();
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -37,12 +41,23 @@ public final class ConfigManager {
         this.autosaveIntervalTicks = Math.max(MIN_AUTOSAVE_TICKS, seconds * 20L);
 
         upgradeKitHeadTextures.clear();
-        ConfigurationSection heads = plugin.getConfig().getConfigurationSection("upgrade-kit-heads");
-        if (heads != null) {
+        ConfigurationSection kitHeads = plugin.getConfig().getConfigurationSection("upgrade-kit-heads");
+        if (kitHeads != null) {
             for (ChestTier tier : ChestTier.values()) {
-                String texture = heads.getString(tier.name().toLowerCase(), "");
+                String texture = kitHeads.getString(tier.name().toLowerCase(), "");
                 if (texture != null && !texture.isBlank()) {
                     upgradeKitHeadTextures.put(tier, texture.trim());
+                }
+            }
+        }
+
+        upgradeHeadTextures.clear();
+        ConfigurationSection upgradeHeads = plugin.getConfig().getConfigurationSection("upgrade-heads");
+        if (upgradeHeads != null) {
+            for (String key : upgradeHeads.getKeys(false)) {
+                String texture = upgradeHeads.getString(key, "");
+                if (texture != null && !texture.isBlank()) {
+                    upgradeHeadTextures.put(key.toLowerCase(), texture.trim());
                 }
             }
         }
@@ -55,5 +70,10 @@ public final class ConfigManager {
     /** The configured custom-head Base64 texture for this tier's upgrade kit, if the admin set one. */
     public Optional<String> upgradeKitHeadTexture(ChestTier tier) {
         return Optional.ofNullable(upgradeKitHeadTextures.get(tier));
+    }
+
+    /** The configured custom-head Base64 texture for a pluggable upgrade (matched case-insensitively by name), if set. */
+    public Optional<String> upgradeHeadTexture(String upgradeName) {
+        return Optional.ofNullable(upgradeHeadTextures.get(upgradeName.toLowerCase()));
     }
 }

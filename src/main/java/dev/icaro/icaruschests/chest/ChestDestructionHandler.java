@@ -14,11 +14,12 @@ import java.util.logging.Level;
  * Shared "this chest is gone" logic used by both a normal break and an
  * explosion: drops the stored contents (vanilla never knew they existed,
  * since they live in our custom GUI, not the tile entity's own inventory)
- * plus a refund of the upgrade kit that got it to its current tier — so
- * breaking an upgraded chest never leaves the player at a material loss —
- * deletes the chest's row from SQLite, and evicts it from {@link ChestManager}.
- * The chest block itself still drops normally via vanilla's own break/
- * explosion handling; nothing here needs to touch that.
+ * plus any installed pluggable-upgrade items and a refund of the upgrade kit
+ * that got it to its current tier — so breaking an upgraded chest never
+ * leaves the player at a material loss — deletes the chest's row from
+ * SQLite, and evicts it from {@link ChestManager}. The chest block itself
+ * still drops normally via vanilla's own break/explosion handling; nothing
+ * here needs to touch that.
  */
 public final class ChestDestructionHandler {
 
@@ -40,6 +41,11 @@ public final class ChestDestructionHandler {
         for (ItemStack item : chest.getContents()) {
             if (item != null && item.getType() != Material.AIR) {
                 dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), item);
+            }
+        }
+        for (ItemStack upgrade : chest.getUpgrades()) {
+            if (upgrade != null && upgrade.getType() != Material.AIR) {
+                dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), upgrade);
             }
         }
         chest.getTier().upgradeMaterial().ifPresent(ignored ->

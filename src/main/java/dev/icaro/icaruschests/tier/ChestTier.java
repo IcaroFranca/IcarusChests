@@ -20,28 +20,37 @@ import java.util.Optional;
  */
 public enum ChestTier {
 
-    NORMAL("Normal", 27, TextColor.color(0xB6, 0x86, 0x55), null, 0),
-    COPPER("Cobre", 45, TextColor.color(0xC8, 0x71, 0x37), Material.COPPER_INGOT, 8),
-    IRON("Ferro", 54, TextColor.color(0xDC, 0xDC, 0xDC), Material.IRON_INGOT, 8),
-    GOLD("Ouro", 81, TextColor.color(0xFF, 0xD9, 0x66), Material.GOLD_INGOT, 8),
-    DIAMOND("Diamante", 108, TextColor.color(0x4A, 0xED, 0xD9), Material.DIAMOND, 8),
-    NETHERITE("Netherite", 135, TextColor.color(0x6E, 0x5A, 0x61), Material.NETHERITE_INGOT, 4);
+    NORMAL("Normal", 27, TextColor.color(0xB6, 0x86, 0x55), null, 0, 1),
+    COPPER("Cobre", 45, TextColor.color(0xC8, 0x71, 0x37), Material.COPPER_INGOT, 8, 1),
+    IRON("Ferro", 54, TextColor.color(0xDC, 0xDC, 0xDC), Material.IRON_INGOT, 8, 2),
+    GOLD("Ouro", 81, TextColor.color(0xFF, 0xD9, 0x66), Material.GOLD_INGOT, 8, 2),
+    DIAMOND("Diamante", 108, TextColor.color(0x4A, 0xED, 0xD9), Material.DIAMOND, 8, 3),
+    NETHERITE("Netherite", 135, TextColor.color(0x6E, 0x5A, 0x61), Material.NETHERITE_INGOT, 4, 4);
+
+    /** How many of {@link #upgradeSlotCount()}'s reserved columns actually exist in the control row — see {@code GuiFactory}. */
+    public static final int MAX_UPGRADE_SLOTS = 6;
 
     private final String displayName;
     private final int totalCapacity;
     private final TextColor titleColor;
     private final Material upgradeMaterial;
     private final int upgradeAmount;
+    private final int upgradeSlotCount;
 
-    ChestTier(String displayName, int totalCapacity, TextColor titleColor, Material upgradeMaterial, int upgradeAmount) {
+    ChestTier(String displayName, int totalCapacity, TextColor titleColor, Material upgradeMaterial,
+              int upgradeAmount, int upgradeSlotCount) {
         if (totalCapacity <= 0 || totalCapacity % 9 != 0) {
             throw new IllegalArgumentException("totalCapacity must be a positive multiple of 9: " + totalCapacity);
+        }
+        if (upgradeSlotCount < 0 || upgradeSlotCount > MAX_UPGRADE_SLOTS) {
+            throw new IllegalArgumentException("upgradeSlotCount must be between 0 and " + MAX_UPGRADE_SLOTS + ": " + upgradeSlotCount);
         }
         this.displayName = displayName;
         this.totalCapacity = totalCapacity;
         this.titleColor = titleColor;
         this.upgradeMaterial = upgradeMaterial;
         this.upgradeAmount = upgradeAmount;
+        this.upgradeSlotCount = upgradeSlotCount;
     }
 
     public String displayName() {
@@ -66,6 +75,11 @@ public enum ChestTier {
     /** Amount of {@link #upgradeMaterial()} consumed by this tier's upgrade kit recipe. */
     public int upgradeAmount() {
         return upgradeAmount;
+    }
+
+    /** Number of pluggable-upgrade slots (Filter, Stack, etc.) a chest at this tier has. Never decreases between tiers. */
+    public int upgradeSlotCount() {
+        return upgradeSlotCount;
     }
 
     /**

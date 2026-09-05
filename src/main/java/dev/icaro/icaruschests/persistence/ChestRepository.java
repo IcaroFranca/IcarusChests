@@ -6,6 +6,8 @@ import org.bukkit.inventory.ItemStack;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -106,6 +108,51 @@ public final class ChestRepository {
                     return Optional.of(ItemStackSerializer.deserialize(resultSet.getString(1), expectedSize));
                 }
             }
+        });
+    }
+
+    /**
+     * Replaces every {@code chest_upgrade} row for this chest with {@code upgradesBySlot}
+     * (slot index → the installed upgrade's {@code name()}; empty slots simply aren't present).
+     * Kept type-agnostic (plain strings, not the {@code upgrade} package's own enum) to avoid a
+     * persistence→upgrade dependency, since {@code upgrade} already depends on {@code persistence}.
+     */
+    public CompletableFuture<Void> saveUpgrades(UUID chestId, Map<Integer, String> upgradesBySlot) {
+        return database.submit(connection -> {
+            try (PreparedStatement delete = connection.prepareStatement("DELETE FROM chest_upgrade WHERE chest_id = ?")) {
+                delete.setString(1, chestId.toString());
+                delete.executeUpdate();
+            }
+            if (upgradesBySlot.isEmpty()) {
+                return;
+            }
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO chest_upgrade(chest_id, upgrade_type, slot_index, data_json) VALUES (?, ?, ?, NULL)")) {
+                for (Map.Entry<Integer, String> entry : upgradesBySlot.entrySet()) {
+                    insert.setString(1, chestId.toString());
+                    insert.setString(2, entry.getValue());
+                    insert.setInt(3, entry.getKey());
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+        });
+    }
+
+    /** Empty map when the chest has no upgrades installed (or was never saved). */
+    public CompletableFuture<Map<Integer, String>> loadUpgrades(UUID chestId) {
+        return database.submit(connection -> {
+            Map<Integer, String> result = new HashMap<>();
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT slot_index, upgrade_type FROM chest_upgrade WHERE chest_id = ?")) {
+                statement.setString(1, chestId.toString());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        result.put(resultSet.getInt(1), resultSet.getString(2));
+                    }
+                }
+            }
+            return result;
         });
     }
 }

@@ -15,6 +15,7 @@ import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.upgrade.TierUpgradeService;
 import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
+import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
@@ -41,6 +42,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private AutosaveTask autosaveTask;
     private BukkitTask autosaveTaskHandle;
     private UpgradeKitRegistry upgradeKitRegistry;
+    private UpgradeRegistry upgradeRegistry;
     private TierUpgradeService tierUpgradeService;
     private ChestDestructionHandler destructionHandler;
 
@@ -56,12 +58,14 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         }
 
         chestRepository = new ChestRepository(database);
-        chestManager = new ChestManager(chestRepository, this);
-        autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
         upgradeKitRegistry = new UpgradeKitRegistry(this, configManager);
+        upgradeRegistry = new UpgradeRegistry(this, configManager);
+        chestManager = new ChestManager(chestRepository, upgradeRegistry, this);
+        autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
         upgradeKitRegistry.registerRecipes();
+        upgradeRegistry.registerRecipes();
 
         registerCommands();
         registerListeners();
@@ -131,7 +135,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestPlaceListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler, chestRepository, this), this);
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
-        pluginManager.registerEvents(new ChestGuiListener(chestManager), this);
+        pluginManager.registerEvents(new ChestGuiListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
     }
 
