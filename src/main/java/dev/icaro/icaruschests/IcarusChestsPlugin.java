@@ -58,8 +58,8 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         chestRepository = new ChestRepository(database);
         chestManager = new ChestManager(chestRepository, this);
         autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
-        destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, this);
-        upgradeKitRegistry = new UpgradeKitRegistry(this);
+        upgradeKitRegistry = new UpgradeKitRegistry(this, configManager);
+        destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
         upgradeKitRegistry.registerRecipes();
 

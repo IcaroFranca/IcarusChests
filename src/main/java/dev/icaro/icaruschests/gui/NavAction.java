@@ -2,11 +2,11 @@ package dev.icaro.icaruschests.gui;
 
 import java.util.Optional;
 
-/** Action encoded on a paginated GUI's navigation button items. */
+/** Action encoded on a scrollable GUI's control-row button items. */
 public enum NavAction {
 
-    PREVIOUS("prev"),
-    NEXT("next");
+    SCROLL_UP("scroll_up"),
+    SCROLL_DOWN("scroll_down");
 
     private final String key;
 

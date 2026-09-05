@@ -1,8 +1,8 @@
 package dev.icaro.icaruschests.tier;
 
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Material;
 
-import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -11,43 +11,35 @@ import java.util.Optional;
  * constants must never be reordered — only appended before {@link #NETHERITE}
  * would require a migration, so new tiers should be appended at the end.
  *
- * <p>A vanilla {@code Inventory} of chest type is capped at 54 slots (6 rows)
- * by the client, so tiers above that capacity are split across multiple
- * navigable pages instead of one oversized inventory. Pages aren't
- * necessarily uniform in size — {@link #pageSizes} lists each page's exact
- * size (front-loaded: earlier pages are as large as possible), and they
- * always sum to {@link #totalCapacity()}.
- *
- * <p>Linking two chests of the same tier into a double chest doubles
- * whatever single-chest capacity applies at the time (see {@code
- * IcarusChest#effectivePageSizes()}) — that doubling is per-chest-instance
- * state, not part of this enum.
+ * <p>{@link #totalCapacity()} must always be a multiple of 9 (a Minecraft
+ * chest-type inventory row) since the GUI scrolls through it a row at a
+ * time — see {@code GuiFactory}. Linking two chests of the same tier into a
+ * double chest doubles whatever single-chest capacity applies at the time —
+ * that doubling is per-chest-instance state (see {@code IcarusChest}), not
+ * part of this enum.
  */
 public enum ChestTier {
 
-    NORMAL("Normal", new int[]{27}, null, 0),
-    COPPER("Cobre", new int[]{45}, Material.COPPER_INGOT, 8),
-    IRON("Ferro", new int[]{54}, Material.IRON_INGOT, 8),
-    GOLD("Ouro", new int[]{54, 27}, Material.GOLD_INGOT, 8),
-    DIAMOND("Diamante", new int[]{54, 54}, Material.DIAMOND, 8),
-    NETHERITE("Netherite", new int[]{54, 54, 27}, Material.NETHERITE_INGOT, 4);
-
-    public static final int MAX_SLOTS_PER_PAGE = 54;
+    NORMAL("Normal", 27, TextColor.color(0xB6, 0x86, 0x55), null, 0),
+    COPPER("Cobre", 45, TextColor.color(0xC8, 0x71, 0x37), Material.COPPER_INGOT, 8),
+    IRON("Ferro", 54, TextColor.color(0xDC, 0xDC, 0xDC), Material.IRON_INGOT, 8),
+    GOLD("Ouro", 81, TextColor.color(0xFF, 0xD9, 0x66), Material.GOLD_INGOT, 8),
+    DIAMOND("Diamante", 108, TextColor.color(0x4A, 0xED, 0xD9), Material.DIAMOND, 8),
+    NETHERITE("Netherite", 135, TextColor.color(0x6E, 0x5A, 0x61), Material.NETHERITE_INGOT, 4);
 
     private final String displayName;
-    private final int[] pageSizes;
+    private final int totalCapacity;
+    private final TextColor titleColor;
     private final Material upgradeMaterial;
     private final int upgradeAmount;
 
-    ChestTier(String displayName, int[] pageSizes, Material upgradeMaterial, int upgradeAmount) {
-        for (int size : pageSizes) {
-            if (size <= 0 || size % 9 != 0 || size > MAX_SLOTS_PER_PAGE) {
-                throw new IllegalArgumentException("each page size must be a positive multiple of 9, at most "
-                        + MAX_SLOTS_PER_PAGE + ": " + size);
-            }
+    ChestTier(String displayName, int totalCapacity, TextColor titleColor, Material upgradeMaterial, int upgradeAmount) {
+        if (totalCapacity <= 0 || totalCapacity % 9 != 0) {
+            throw new IllegalArgumentException("totalCapacity must be a positive multiple of 9: " + totalCapacity);
         }
         this.displayName = displayName;
-        this.pageSizes = pageSizes;
+        this.totalCapacity = totalCapacity;
+        this.titleColor = titleColor;
         this.upgradeMaterial = upgradeMaterial;
         this.upgradeAmount = upgradeAmount;
     }
@@ -56,19 +48,14 @@ public enum ChestTier {
         return displayName;
     }
 
-    /** Size of each page in slots, front-loaded (earlier pages are as large as possible), always summing to {@link #totalCapacity()}. */
-    public int[] pageSizes() {
-        return pageSizes.clone();
+    /** Color used for this tier's name in the GUI title, matching its ore/material. */
+    public TextColor titleColor() {
+        return titleColor;
     }
 
-    /** Number of navigable pages this tier's inventory is split across. */
-    public int pages() {
-        return pageSizes.length;
-    }
-
-    /** Total item capacity across all pages, at this tier alone (not doubled). */
+    /** Total item capacity at this tier alone (not doubled). Always a multiple of 9. */
     public int totalCapacity() {
-        return Arrays.stream(pageSizes).sum();
+        return totalCapacity;
     }
 
     /** Material consumed by this tier's upgrade kit recipe, absent for {@link #NORMAL}. */
