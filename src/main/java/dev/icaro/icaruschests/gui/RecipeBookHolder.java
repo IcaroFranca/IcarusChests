@@ -14,7 +14,7 @@ public final class RecipeBookHolder implements InventoryHolder {
         return page;
     }
 
-    void setPage(int page) {
+    public void setPage(int page) {
         this.page = page;
     }
 
