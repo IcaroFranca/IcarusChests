@@ -11,7 +11,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
@@ -29,8 +31,14 @@ import java.util.Set;
  * {@code FilterConfigGui}), and on close saves the distinct item types
  * placed there into the item's own PDC (see {@code UpgradeRegistry}) — so
  * the configuration travels with the item into whichever chest it's later
- * installed on. The GUI is only a type-picker, not real storage: whatever
- * was placed there is handed straight back to the player when it closes.
+ * installed on.
+ *
+ * <p>The picker never touches the player's real inventory: clicking a slot
+ * with an item on the cursor stamps a one-item "ghost" copy of that type
+ * into the slot (the cursor itself is untouched — nothing is taken), and
+ * clicking an occupied slot with an empty cursor just erases the ghost
+ * (nothing is given back, since nothing was ever really moved). This is a
+ * type picker, not storage.
  */
 public final class FilterConfigListener implements Listener {
 
@@ -53,6 +61,39 @@ public final class FilterConfigListener implements Listener {
     }
 
     @EventHandler
+    public void onFilterConfigClick(InventoryClickEvent event) {
+        if (!(event.getInventory().getHolder() instanceof FilterConfigHolder)) {
+            return;
+        }
+        if (event.getClickedInventory() != event.getInventory()) {
+            return; // a click in the player's own inventory below: doesn't touch the picker at all
+        }
+        event.setCancelled(true);
+
+        ItemStack cursor = event.getCursor();
+        boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
+        ItemStack current = event.getCurrentItem();
+        boolean slotEmpty = current == null || current.getType() == Material.AIR;
+
+        if (!cursorEmpty) {
+            // Stamp a one-item ghost of whatever's on the cursor — the cursor (and the player's
+            // real inventory) is never touched, so this never consumes anything.
+            ItemStack ghost = cursor.clone();
+            ghost.setAmount(1);
+            event.getInventory().setItem(event.getSlot(), ghost);
+        } else if (!slotEmpty) {
+            event.getInventory().setItem(event.getSlot(), null);
+        }
+    }
+
+    @EventHandler
+    public void onFilterConfigDrag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof FilterConfigHolder) {
+            event.setCancelled(true); // ghosts are placed one click at a time; no drag-spreading
+        }
+    }
+
+    @EventHandler
     public void onCloseFilterConfig(InventoryCloseEvent event) {
         if (!(event.getInventory().getHolder() instanceof FilterConfigHolder holder)) {
             return;
@@ -67,7 +108,6 @@ public final class FilterConfigListener implements Listener {
             ItemStack item = gui.getItem(i);
             if (item != null && item.getType() != Material.AIR) {
                 chosen.add(item.getType());
-                returnItem(player, item);
             }
         }
 
@@ -85,10 +125,5 @@ public final class FilterConfigListener implements Listener {
                         ? "Filtro configurado para aceitar qualquer item."
                         : "Filtro configurado: " + chosen.size() + " tipo(s) de item aceito(s).",
                 NamedTextColor.GREEN));
-    }
-
-    private void returnItem(Player player, ItemStack item) {
-        player.getInventory().addItem(item).values()
-                .forEach(extra -> player.getWorld().dropItemNaturally(player.getLocation(), extra));
     }
 }
