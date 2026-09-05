@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 /**
@@ -44,9 +45,19 @@ public final class UpgradeRegistry {
         this.configManager = configManager;
     }
 
+    /**
+     * Registers every upgrade's recipe, one at a time — a problem with any single one (e.g. a
+     * malformed head texture in {@code config.yml}) is logged and skipped rather than aborting
+     * the rest, since this runs during {@code onEnable} and an uncaught exception here would
+     * otherwise stop the plugin from ever registering its commands/listeners at all.
+     */
     public void registerRecipes() {
         for (UpgradeType type : UpgradeType.values()) {
-            registerRecipe(type);
+            try {
+                registerRecipe(type);
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.WARNING, "Falha ao registrar a receita do upgrade " + type, e);
+            }
         }
     }
 
@@ -54,10 +65,13 @@ public final class UpgradeRegistry {
         NamespacedKey key = new NamespacedKey(plugin, type.key());
         ShapelessRecipe recipe = new ShapelessRecipe(key, createItem(type));
         for (IngredientSpec spec : ingredientSpecs(type)) {
-            if (spec.exactPreviousTier() != null) {
-                // Requires the exact previous Stack tier item (not just "any Hopper") as an
-                // ingredient — upgrading a chest's Stack bonus consumes the one it replaces.
-                recipe.addIngredient(new RecipeChoice.ExactChoice(createItem(spec.exactPreviousTier())));
+            if (spec.previousTierChoice() != null) {
+                // Vanilla's ingredient matching can only compare by Material (or a short list of
+                // them), never by "this exact custom item" for something head-shaped with its own
+                // meta — so this slot broadly accepts any player head or ore block, and
+                // UpgradeRecipeValidationListener does the real, PDC-based check as the grid
+                // changes, clearing the result unless it's really the correct previous tier.
+                recipe.addIngredient(spec.previousTierChoice());
             } else {
                 recipe.addIngredient(spec.count(), spec.material());
             }
@@ -88,8 +102,8 @@ public final class UpgradeRegistry {
     public List<ItemStack> recipeIngredientItems(UpgradeType type) {
         List<ItemStack> items = new ArrayList<>();
         for (IngredientSpec spec : ingredientSpecs(type)) {
-            if (spec.exactPreviousTier() != null) {
-                items.add(createItem(spec.exactPreviousTier()));
+            if (spec.previousTierType() != null) {
+                items.add(createItem(spec.previousTierType()));
             } else {
                 for (int i = 0; i < spec.count(); i++) {
                     items.add(new ItemStack(spec.material()));
@@ -102,7 +116,8 @@ public final class UpgradeRegistry {
     /**
      * Filter: 1 Hopper + 3 Paper. Every Stack tier fills the whole 3x3 grid: the tier's own ore
      * block x2, its raw ingot/gem x6, and — instead of a plain Hopper, except for Copper, the
-     * entry tier — the exact previous Stack tier item, so upgrading consumes the one it replaces.
+     * entry tier — a slot broadly accepting the previous Stack tier's shape (see {@link
+     * IngredientSpec#previousTier}), validated exactly by {@code UpgradeRecipeValidationListener}.
      */
     private List<IngredientSpec> ingredientSpecs(UpgradeType type) {
         if (type == UpgradeType.FILTER) {
@@ -110,20 +125,27 @@ public final class UpgradeRegistry {
         }
         List<IngredientSpec> specs = new ArrayList<>();
         specs.add(type.previousStackTier()
-                .map(IngredientSpec::exact)
+                .map(this::previousTierSpec)
                 .orElseGet(() -> IngredientSpec.of(Material.HOPPER, 1)));
         specs.add(IngredientSpec.of(blockMaterial(type), 2));
         specs.add(IngredientSpec.of(rawMaterial(type), 6));
         return specs;
     }
 
-    private record IngredientSpec(Material material, int count, UpgradeType exactPreviousTier) {
+    private IngredientSpec previousTierSpec(UpgradeType previousTier) {
+        // Accepts either shape createItem(previousTier) might currently have — a custom head if
+        // configured, or its plain fallback block otherwise — so a match is possible regardless.
+        return IngredientSpec.previousTier(previousTier, blockMaterial(previousTier));
+    }
+
+    private record IngredientSpec(Material material, int count, RecipeChoice previousTierChoice, UpgradeType previousTierType) {
         static IngredientSpec of(Material material, int count) {
-            return new IngredientSpec(material, count, null);
+            return new IngredientSpec(material, count, null, null);
         }
 
-        static IngredientSpec exact(UpgradeType previousTier) {
-            return new IngredientSpec(null, 1, previousTier);
+        static IngredientSpec previousTier(UpgradeType previousTier, Material fallbackMaterial) {
+            RecipeChoice choice = new RecipeChoice.MaterialChoice(Material.PLAYER_HEAD, fallbackMaterial);
+            return new IngredientSpec(null, 1, choice, previousTier);
         }
     }
 

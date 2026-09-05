@@ -14,6 +14,7 @@ import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
 import dev.icaro.icaruschests.listener.RecipeBookListener;
+import dev.icaro.icaruschests.listener.UpgradeRecipeValidationListener;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.upgrade.TierUpgradeService;
@@ -69,12 +70,16 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
-        upgradeKitRegistry.registerRecipes();
-        upgradeRegistry.registerRecipes();
 
+        // Commands/listeners are registered before recipes: recipe registration reaches out to
+        // config.yml-driven custom head textures and is the riskiest step here, and each recipe
+        // is already isolated against throwing (see registerRecipes()) — but registering it last
+        // means the plugin's core functionality is guaranteed to come up regardless either way.
         registerCommands();
         registerListeners();
         rescheduleAutosave();
+        upgradeKitRegistry.registerRecipes();
+        upgradeRegistry.registerRecipes();
 
         getLogger().info("IcarusChests habilitado (v" + getPluginMeta().getVersion() + ").");
     }
@@ -144,6 +149,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
         pluginManager.registerEvents(new FilterConfigListener(), this);
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
+        pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);
     }
 
     public ChestManager getChestManager() {

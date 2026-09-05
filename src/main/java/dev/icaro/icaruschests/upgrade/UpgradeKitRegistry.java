@@ -17,6 +17,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
 
 /**
  * Builds the consumable "upgrade kit" item for each {@link ChestTier} that
@@ -42,11 +43,21 @@ public final class UpgradeKitRegistry {
     /**
      * Registers a shaped crafting recipe for every tier that defines an
      * upgrade material: a chest in the center slot, surrounded by the tier's
-     * upgrade material (see {@link ChestTier#recipeShape()}).
+     * upgrade material (see {@link ChestTier#recipeShape()}). One tier's
+     * problem (e.g. a malformed head texture) is logged and skipped rather
+     * than aborting the rest — this runs during {@code onEnable}, and an
+     * uncaught exception here would otherwise stop the plugin from ever
+     * registering its commands/listeners at all.
      */
     public void registerRecipes() {
         for (ChestTier tier : ChestTier.values()) {
-            tier.upgradeMaterial().ifPresent(material -> registerRecipe(tier, material));
+            tier.upgradeMaterial().ifPresent(material -> {
+                try {
+                    registerRecipe(tier, material);
+                } catch (RuntimeException e) {
+                    plugin.getLogger().log(Level.WARNING, "Falha ao registrar a receita do kit de upgrade " + tier, e);
+                }
+            });
         }
     }
 
