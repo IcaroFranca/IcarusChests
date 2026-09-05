@@ -6,6 +6,7 @@ import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.gui.NavAction;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
+import dev.icaro.icaruschests.persistence.PersistedUpgrade;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
@@ -23,6 +24,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -37,17 +39,17 @@ import java.util.logging.Level;
  *   <li>the chest's upgrade slots accept dragging a matching upgrade item in
  *       (installs it) or clicking with an empty cursor (removes it back to
  *       the cursor);</li>
- *   <li>a chest with the Filter upgrade only accepts one item type at a time
- *       (whichever is already stored), and one with Stack lets an existing
- *       stack keep growing past the normal limit — both only for direct
- *       left-clicks in this first version; shift-clicking from the player's
- *       own inventory still follows normal vanilla stacking rules.</li>
+ *   <li>a chest with a Filter upgrade installed only accepts item types on
+ *       that Filter's own configured list (see {@code FilterConfigListener}
+ *       — an unconfigured Filter accepts anything), and one with a Stack
+ *       upgrade lets an existing stack keep growing past the item's normal
+ *       limit, up to that tier's multiplier (see {@code UpgradeType}) —
+ *       both only for direct left-clicks in this first version;
+ *       shift-clicking from the player's own inventory still follows normal
+ *       vanilla stacking rules.</li>
  * </ul>
  */
 public final class ChestGuiListener implements Listener {
-
-    /** Flat cap a Stack-upgraded slot can hold, regardless of the item's own normal max stack size. */
-    private static final int STACK_UPGRADE_CAP = 1600;
 
     private final ChestManager chestManager;
     private final ChestRepository chestRepository;
@@ -145,11 +147,16 @@ public final class ChestGuiListener implements Listener {
     }
 
     private void persistUpgrades(IcarusChest chest) {
-        Map<Integer, String> bySlot = new HashMap<>();
+        Map<Integer, PersistedUpgrade> bySlot = new HashMap<>();
         ItemStack[] upgrades = chest.getUpgrades();
         for (int i = 0; i < upgrades.length; i++) {
             int slotIndex = i;
-            UpgradeRegistry.typeOf(upgrades[i]).ifPresent(type -> bySlot.put(slotIndex, type.name()));
+            UpgradeRegistry.typeOf(upgrades[i]).ifPresent(type -> {
+                String dataJson = type == UpgradeType.FILTER
+                        ? UpgradeRegistry.encodeFilterMaterials(UpgradeRegistry.filterMaterials(upgrades[slotIndex]))
+                        : null;
+                bySlot.put(slotIndex, new PersistedUpgrade(type.name(), dataJson));
+            });
         }
         chestRepository.saveUpgrades(chest.getId(), bySlot).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING, "Falha ao persistir upgrades do bau " + chest.getId(), ex);
@@ -161,9 +168,10 @@ public final class ChestGuiListener implements Listener {
         if (event.getClick() != ClickType.LEFT) {
             return; // Filter/Stack only cover plain left-click in this first version
         }
-        boolean stackUpgraded = UpgradeSlots.has(chest.getUpgrades(), UpgradeType.STACK);
-        boolean filtered = UpgradeSlots.has(chest.getUpgrades(), UpgradeType.FILTER);
-        if (!stackUpgraded && !filtered) {
+        double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
+        boolean stackUpgraded = stackMultiplier > 1.0;
+        Optional<ItemStack> filterItem = UpgradeSlots.filterItem(chest.getUpgrades());
+        if (!stackUpgraded && filterItem.isEmpty()) {
             return;
         }
 
@@ -172,10 +180,10 @@ public final class ChestGuiListener implements Listener {
         boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
         boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
 
-        if (stackUpgraded && cursorEmpty && !slotEmpty && slotItem.getAmount() > 64) {
-            // Withdraw at most 64 at a time, leaving the rest — same as the mod this plugin is inspired by.
+        if (stackUpgraded && cursorEmpty && !slotEmpty && slotItem.getAmount() > slotItem.getMaxStackSize()) {
+            // Withdraw at most a normal stack at a time, leaving the rest — same as the mod this plugin is inspired by.
             event.setCancelled(true);
-            int taking = Math.min(64, slotItem.getAmount());
+            int taking = Math.min(slotItem.getMaxStackSize(), slotItem.getAmount());
             int remaining = slotItem.getAmount() - taking;
             event.setCurrentItem(remaining > 0 ? withAmount(slotItem, remaining) : null);
             event.setCursor(withAmount(slotItem, taking));
@@ -186,16 +194,17 @@ public final class ChestGuiListener implements Listener {
             return; // a plain pickup vanilla can already handle correctly
         }
 
-        if (filtered) {
-            Optional<Material> establishedType = firstStoredType(chest);
-            if (establishedType.isPresent() && establishedType.get() != cursor.getType()) {
+        if (filterItem.isPresent()) {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem.get());
+            if (!accepted.isEmpty() && !accepted.contains(cursor.getType())) {
                 event.setCancelled(true);
                 return;
             }
         }
 
         if (stackUpgraded && !slotEmpty && slotItem.isSimilar(cursor)) {
-            int spaceLeft = STACK_UPGRADE_CAP - slotItem.getAmount();
+            int cap = (int) Math.floor(slotItem.getMaxStackSize() * stackMultiplier);
+            int spaceLeft = cap - slotItem.getAmount();
             if (spaceLeft <= 0) {
                 event.setCancelled(true);
                 return;
@@ -210,15 +219,6 @@ public final class ChestGuiListener implements Listener {
             int cursorRemaining = cursor.getAmount() - toMove;
             event.setCursor(cursorRemaining > 0 ? withAmount(cursor, cursorRemaining) : null);
         }
-    }
-
-    private Optional<Material> firstStoredType(IcarusChest chest) {
-        for (ItemStack item : chest.getContents()) {
-            if (item != null && item.getType() != Material.AIR) {
-                return Optional.of(item.getType());
-            }
-        }
-        return Optional.empty();
     }
 
     private static ItemStack withAmount(ItemStack base, int amount) {

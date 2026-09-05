@@ -5,26 +5,52 @@ package dev.icaro.icaruschests.upgrade;
  * go here; {@link UpgradeRegistry} builds each one's item/recipe and {@code
  * ChestGuiListener}/{@code GuiFactory} wire in whatever gameplay effect they
  * have.
+ *
+ * <p>Stack upgrades come in five tiers (one {@code UpgradeType} constant
+ * each, not a single type with a configurable level) so a chest can carry at
+ * most one of a given tier at a time, same as any other upgrade item — see
+ * {@code UpgradeSlots#bestStackMultiplier} for how multiple installed tiers
+ * (e.g. in a high-tier chest with several upgrade slots) combine: only the
+ * best one applies, they don't stack multiplicatively.
  */
 public enum UpgradeType {
 
-    /** While installed, the chest only accepts one item type at a time (whichever is already stored). */
-    FILTER("Filtro"),
+    /**
+     * Only accepts item types explicitly configured on the installed item
+     * itself (right-click the air while holding it — see {@code
+     * FilterConfigListener}); accepts anything if none configured yet.
+     */
+    FILTER("Filtro", 0),
 
-    /** While installed, a slot already holding an item can keep accepting more of the same type past the normal stack limit. */
-    STACK("Stack");
+    STACK_COPPER("Stack de Cobre", 1.5),
+    STACK_IRON("Stack de Ferro", 2.0),
+    STACK_GOLD("Stack de Ouro", 4.0),
+    STACK_DIAMOND("Stack de Diamante", 8.0),
+    STACK_NETHERITE("Stack de Netherite", 16.0);
 
     private final String displayName;
+    private final double stackMultiplier;
 
-    UpgradeType(String displayName) {
+    UpgradeType(String displayName, double stackMultiplier) {
         this.displayName = displayName;
+        this.stackMultiplier = stackMultiplier;
     }
 
     public String displayName() {
         return displayName;
     }
 
-    /** Namespaced key suffix conventionally used for this upgrade's recipe/config entries, e.g. {@code "upgrade_filter"}. */
+    /** {@code true} for the {@code STACK_*} tiers, {@code false} for {@link #FILTER}. */
+    public boolean isStackUpgrade() {
+        return stackMultiplier > 0;
+    }
+
+    /** How much this tier multiplies a slot's normal max stack size by. Only meaningful when {@link #isStackUpgrade()}. */
+    public double stackMultiplier() {
+        return stackMultiplier;
+    }
+
+    /** Namespaced key suffix conventionally used for this upgrade's recipe/config entries, e.g. {@code "upgrade_stack_copper"}. */
     public String key() {
         return "upgrade_" + name().toLowerCase();
     }

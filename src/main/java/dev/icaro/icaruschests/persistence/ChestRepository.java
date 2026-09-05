@@ -6,6 +6,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Types;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -117,7 +118,7 @@ public final class ChestRepository {
      * Kept type-agnostic (plain strings, not the {@code upgrade} package's own enum) to avoid a
      * persistence→upgrade dependency, since {@code upgrade} already depends on {@code persistence}.
      */
-    public CompletableFuture<Void> saveUpgrades(UUID chestId, Map<Integer, String> upgradesBySlot) {
+    public CompletableFuture<Void> saveUpgrades(UUID chestId, Map<Integer, PersistedUpgrade> upgradesBySlot) {
         return database.submit(connection -> {
             try (PreparedStatement delete = connection.prepareStatement("DELETE FROM chest_upgrade WHERE chest_id = ?")) {
                 delete.setString(1, chestId.toString());
@@ -127,11 +128,17 @@ public final class ChestRepository {
                 return;
             }
             try (PreparedStatement insert = connection.prepareStatement(
-                    "INSERT INTO chest_upgrade(chest_id, upgrade_type, slot_index, data_json) VALUES (?, ?, ?, NULL)")) {
-                for (Map.Entry<Integer, String> entry : upgradesBySlot.entrySet()) {
+                    "INSERT INTO chest_upgrade(chest_id, upgrade_type, slot_index, data_json) VALUES (?, ?, ?, ?)")) {
+                for (Map.Entry<Integer, PersistedUpgrade> entry : upgradesBySlot.entrySet()) {
+                    PersistedUpgrade upgrade = entry.getValue();
                     insert.setString(1, chestId.toString());
-                    insert.setString(2, entry.getValue());
+                    insert.setString(2, upgrade.upgradeType());
                     insert.setInt(3, entry.getKey());
+                    if (upgrade.dataJson() == null) {
+                        insert.setNull(4, Types.VARCHAR);
+                    } else {
+                        insert.setString(4, upgrade.dataJson());
+                    }
                     insert.addBatch();
                 }
                 insert.executeBatch();
@@ -140,15 +147,15 @@ public final class ChestRepository {
     }
 
     /** Empty map when the chest has no upgrades installed (or was never saved). */
-    public CompletableFuture<Map<Integer, String>> loadUpgrades(UUID chestId) {
+    public CompletableFuture<Map<Integer, PersistedUpgrade>> loadUpgrades(UUID chestId) {
         return database.submit(connection -> {
-            Map<Integer, String> result = new HashMap<>();
+            Map<Integer, PersistedUpgrade> result = new HashMap<>();
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT slot_index, upgrade_type FROM chest_upgrade WHERE chest_id = ?")) {
+                    "SELECT slot_index, upgrade_type, data_json FROM chest_upgrade WHERE chest_id = ?")) {
                 statement.setString(1, chestId.toString());
                 try (ResultSet resultSet = statement.executeQuery()) {
                     while (resultSet.next()) {
-                        result.put(resultSet.getInt(1), resultSet.getString(2));
+                        result.put(resultSet.getInt(1), new PersistedUpgrade(resultSet.getString(2), resultSet.getString(3)));
                     }
                 }
             }
