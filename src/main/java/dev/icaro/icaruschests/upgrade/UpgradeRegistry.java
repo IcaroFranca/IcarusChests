@@ -52,8 +52,8 @@ public final class UpgradeRegistry {
     private void registerRecipe(UpgradeType type) {
         NamespacedKey key = new NamespacedKey(plugin, type.key());
         ShapelessRecipe recipe = new ShapelessRecipe(key, createItem(type));
-        // Stack upgrades require the tier's ORE BLOCK (not the raw ingot/gem) so a chest's
-        // storage bonus costs meaningfully more than just upgrading its tier would.
+        // Stack upgrades fill the whole 3x3 grid: 1 hopper + 2 ore blocks + 6 raw
+        // ingots/gems of that same tier, so the cost stands apart from a tier kit's.
         switch (type) {
             case FILTER -> {
                 recipe.addIngredient(Material.HOPPER);
@@ -61,23 +61,28 @@ public final class UpgradeRegistry {
             }
             case STACK_COPPER -> {
                 recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(Material.COPPER_BLOCK);
+                recipe.addIngredient(2, Material.COPPER_BLOCK);
+                recipe.addIngredient(6, Material.COPPER_INGOT);
             }
             case STACK_IRON -> {
                 recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(Material.IRON_BLOCK);
+                recipe.addIngredient(2, Material.IRON_BLOCK);
+                recipe.addIngredient(6, Material.IRON_INGOT);
             }
             case STACK_GOLD -> {
                 recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(Material.GOLD_BLOCK);
+                recipe.addIngredient(2, Material.GOLD_BLOCK);
+                recipe.addIngredient(6, Material.GOLD_INGOT);
             }
             case STACK_DIAMOND -> {
                 recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(Material.DIAMOND_BLOCK);
+                recipe.addIngredient(2, Material.DIAMOND_BLOCK);
+                recipe.addIngredient(6, Material.DIAMOND);
             }
             case STACK_NETHERITE -> {
                 recipe.addIngredient(Material.HOPPER);
-                recipe.addIngredient(Material.NETHERITE_BLOCK);
+                recipe.addIngredient(2, Material.NETHERITE_BLOCK);
+                recipe.addIngredient(6, Material.NETHERITE_INGOT);
             }
         }
         plugin.getServer().addRecipe(recipe);
