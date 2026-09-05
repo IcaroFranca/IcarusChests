@@ -1,5 +1,7 @@
 package dev.icaro.icaruschests.upgrade;
 
+import java.util.Optional;
+
 /**
  * A pluggable upgrade a chest's dedicated upgrade slots can hold. New types
  * go here; {@link UpgradeRegistry} builds each one's item/recipe and {@code
@@ -53,5 +55,22 @@ public enum UpgradeType {
     /** Namespaced key suffix conventionally used for this upgrade's recipe/config entries, e.g. {@code "upgrade_stack_copper"}. */
     public String key() {
         return "upgrade_" + name().toLowerCase();
+    }
+
+    /**
+     * The Stack tier one step below this one, if any — {@link UpgradeRegistry}
+     * requires it (instead of a Hopper) as this tier's crafting ingredient, so
+     * upgrading a chest's Stack upgrade consumes the one it replaces. Copper
+     * has no previous tier (it's the entry point) and Filter isn't a Stack
+     * tier at all, so both return empty.
+     */
+    public Optional<UpgradeType> previousStackTier() {
+        return switch (this) {
+            case STACK_IRON -> Optional.of(STACK_COPPER);
+            case STACK_GOLD -> Optional.of(STACK_IRON);
+            case STACK_DIAMOND -> Optional.of(STACK_GOLD);
+            case STACK_NETHERITE -> Optional.of(STACK_DIAMOND);
+            default -> Optional.empty();
+        };
     }
 }

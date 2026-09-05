@@ -43,6 +43,12 @@ public final class NamespacedKeys {
     /** Tag on a Filter upgrade item's PDC: comma-separated {@code Material} names it accepts. Absent/empty means it accepts anything. */
     public static NamespacedKey FILTER_ITEMS;
 
+    /** Marker tag on the Recipe Book item's PDC — present (value irrelevant) means "this is the recipe book". */
+    public static NamespacedKey RECIPE_BOOK;
+
+    /** Tag on a recipe book navigation button's PDC: {@code "prev"} or {@code "next"}. */
+    public static NamespacedKey RECIPE_NAV;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
@@ -52,5 +58,7 @@ public final class NamespacedKeys {
         DOUBLED = new NamespacedKey(plugin, "doubled");
         UPGRADE_TYPE = new NamespacedKey(plugin, "upgrade_type");
         FILTER_ITEMS = new NamespacedKey(plugin, "filter_items");
+        RECIPE_BOOK = new NamespacedKey(plugin, "recipe_book");
+        RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
     }
 }

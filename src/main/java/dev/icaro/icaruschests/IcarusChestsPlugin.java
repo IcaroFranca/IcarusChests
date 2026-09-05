@@ -6,12 +6,14 @@ import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
+import dev.icaro.icaruschests.gui.RecipeBookRegistry;
 import dev.icaro.icaruschests.listener.ChestBreakListener;
 import dev.icaro.icaruschests.listener.ChestGuiListener;
 import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
+import dev.icaro.icaruschests.listener.RecipeBookListener;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.upgrade.TierUpgradeService;
@@ -44,6 +46,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private BukkitTask autosaveTaskHandle;
     private UpgradeKitRegistry upgradeKitRegistry;
     private UpgradeRegistry upgradeRegistry;
+    private RecipeBookRegistry recipeBookRegistry;
     private TierUpgradeService tierUpgradeService;
     private ChestDestructionHandler destructionHandler;
 
@@ -61,6 +64,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         chestRepository = new ChestRepository(database);
         upgradeKitRegistry = new UpgradeKitRegistry(this, configManager);
         upgradeRegistry = new UpgradeRegistry(this, configManager);
+        recipeBookRegistry = new RecipeBookRegistry(upgradeKitRegistry, upgradeRegistry);
         chestManager = new ChestManager(chestRepository, upgradeRegistry, this);
         autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
@@ -125,7 +129,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private void registerCommands() {
         var command = getCommand("icaruschests");
         if (command != null) {
-            IcarusChestsCommand executor = new IcarusChestsCommand(this, upgradeKitRegistry);
+            IcarusChestsCommand executor = new IcarusChestsCommand(this, upgradeKitRegistry, recipeBookRegistry);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         }
@@ -139,6 +143,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestGuiListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
         pluginManager.registerEvents(new FilterConfigListener(), this);
+        pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
     }
 
     public ChestManager getChestManager() {
