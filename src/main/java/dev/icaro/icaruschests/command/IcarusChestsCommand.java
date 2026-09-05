@@ -2,6 +2,8 @@ package dev.icaro.icaruschests.command;
 
 import dev.icaro.icaruschests.IcarusChestsPlugin;
 import dev.icaro.icaruschests.model.IcarusChest;
+import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
@@ -14,24 +16,28 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Root command for IcarusChests. Current subcommands: {@code ping} (health
- * check) and {@code info} (debug: reports the tier of the chest the player is
- * looking at). Future milestones will add {@code reload}, {@code give} and
- * {@code stats}.
+ * Root command for IcarusChests: {@code ping} (health check), {@code info}
+ * (debug: reports the tier of the chest the player is looking at), and the
+ * admin-only {@code give}/{@code reload}.
  */
 public final class IcarusChestsCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("ping", "info");
+    private static final List<String> SUBCOMMANDS = List.of("ping", "info", "give", "reload");
     private static final int INFO_MAX_DISTANCE = 6;
+    private static final String ADMIN_PERMISSION = "icaruschests.admin";
+    private static final String INFO_PERMISSION = "icaruschests.info";
 
     private final IcarusChestsPlugin plugin;
+    private final UpgradeKitRegistry upgradeKitRegistry;
 
-    public IcarusChestsCommand(IcarusChestsPlugin plugin) {
+    public IcarusChestsCommand(IcarusChestsPlugin plugin, UpgradeKitRegistry upgradeKitRegistry) {
         this.plugin = plugin;
+        this.upgradeKitRegistry = upgradeKitRegistry;
     }
 
     @Override
@@ -43,15 +49,22 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             return true;
         }
 
-        if (args[0].equalsIgnoreCase("info")) {
-            return handleInfo(sender);
-        }
-
-        sender.sendMessage(Component.text("Subcomando desconhecido: " + args[0], NamedTextColor.RED));
-        return true;
+        return switch (args[0].toLowerCase()) {
+            case "info" -> handleInfo(sender);
+            case "give" -> handleGive(sender, args);
+            case "reload" -> handleReload(sender);
+            default -> {
+                sender.sendMessage(Component.text("Subcomando desconhecido: " + args[0], NamedTextColor.RED));
+                yield true;
+            }
+        };
     }
 
     private boolean handleInfo(CommandSender sender) {
+        if (!sender.hasPermission(INFO_PERMISSION)) {
+            sender.sendMessage(Component.text("Você não tem permissão para isso.", NamedTextColor.RED));
+            return true;
+        }
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Este comando só pode ser usado por um jogador.", NamedTextColor.RED));
             return true;
@@ -71,14 +84,71 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
         }
 
         IcarusChest c = chest.get();
-        Location loc = target.getLocation();
+        Location loc = c.getLocation().toBlock().getLocation();
         sender.sendMessage(Component.text("Baú IcarusChests em (" + loc.getBlockX() + ", " + loc.getBlockY() + ", "
                 + loc.getBlockZ() + ")", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  Tier: " + c.getTier().displayName()
-                + " (" + c.getTier().totalCapacity() + " slots, " + c.getTier().pages() + " página(s))",
+                        + " (" + c.getTier().totalCapacity() + " slots, " + c.getTier().pages() + " página(s))",
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("  Id: " + c.getId(), NamedTextColor.GRAY));
         return true;
+    }
+
+    private boolean handleGive(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(ADMIN_PERMISSION)) {
+            sender.sendMessage(Component.text("Você não tem permissão para isso.", NamedTextColor.RED));
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Uso: /icaruschests give <tier> [jogador]", NamedTextColor.RED));
+            return true;
+        }
+
+        Optional<ChestTier> tier = parseTier(args[1]);
+        if (tier.isEmpty() || tier.get().upgradeMaterial().isEmpty()) {
+            sender.sendMessage(Component.text("Tier inválido (Normal não tem kit de upgrade): " + args[1],
+                    NamedTextColor.RED));
+            return true;
+        }
+
+        Player target;
+        if (args.length >= 3) {
+            target = plugin.getServer().getPlayerExact(args[2]);
+            if (target == null) {
+                sender.sendMessage(Component.text("Jogador offline ou inexistente: " + args[2], NamedTextColor.RED));
+                return true;
+            }
+        } else if (sender instanceof Player player) {
+            target = player;
+        } else {
+            sender.sendMessage(Component.text("Especifique um jogador ao usar este comando pelo console.",
+                    NamedTextColor.RED));
+            return true;
+        }
+
+        target.getInventory().addItem(upgradeKitRegistry.createKit(tier.get()));
+        sender.sendMessage(Component.text("Kit de upgrade (" + tier.get().displayName() + ") entregue a "
+                + target.getName() + ".", NamedTextColor.GREEN));
+        return true;
+    }
+
+    private boolean handleReload(CommandSender sender) {
+        if (!sender.hasPermission(ADMIN_PERMISSION)) {
+            sender.sendMessage(Component.text("Você não tem permissão para isso.", NamedTextColor.RED));
+            return true;
+        }
+        plugin.reloadPluginConfig();
+        sender.sendMessage(Component.text("Configuração recarregada.", NamedTextColor.GREEN));
+        return true;
+    }
+
+    private Optional<ChestTier> parseTier(String raw) {
+        for (ChestTier tier : ChestTier.values()) {
+            if (tier.name().equalsIgnoreCase(raw) || tier.displayName().equalsIgnoreCase(raw)) {
+                return Optional.of(tier);
+            }
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -86,6 +156,18 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
                                                   @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
             return SUBCOMMANDS;
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
+            List<String> tiers = new ArrayList<>();
+            for (ChestTier tier : ChestTier.values()) {
+                if (tier.upgradeMaterial().isPresent()) {
+                    tiers.add(tier.name());
+                }
+            }
+            return tiers;
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
+            return plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList();
         }
         return List.of();
     }
