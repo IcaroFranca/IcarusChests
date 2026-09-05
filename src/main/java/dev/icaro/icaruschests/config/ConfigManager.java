@@ -2,12 +2,19 @@ package dev.icaro.icaruschests.config;
 
 import dev.icaro.icaruschests.tier.ChestTier;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
 
 /**
  * Thin wrapper around {@code config.yml}. Deliberately minimal for the MVP —
@@ -36,6 +43,7 @@ public final class ConfigManager {
     public void load() {
         plugin.saveDefaultConfig();
         plugin.reloadConfig();
+        mergeNewDefaults();
 
         int seconds = plugin.getConfig().getInt("autosave-interval-seconds", DEFAULT_AUTOSAVE_SECONDS);
         this.autosaveIntervalTicks = Math.max(MIN_AUTOSAVE_TICKS, seconds * 20L);
@@ -60,6 +68,34 @@ public final class ConfigManager {
                     upgradeHeadTextures.put(key.toLowerCase(), texture.trim());
                 }
             }
+        }
+    }
+
+    /**
+     * Fills in any key the jar's bundled {@code config.yml} defines but the
+     * admin's on-disk file doesn't have yet (e.g. a texture added in a newer
+     * plugin version) and persists the result. {@link JavaPlugin#saveDefaultConfig()}
+     * only ever writes the file once, the very first time it's missing
+     * entirely — a {@code config.yml} created by an older version of the
+     * plugin would otherwise never pick up keys added later without the
+     * admin deleting it by hand. A key that already has a value on disk
+     * (blank included) is left exactly as it is; only genuinely missing
+     * keys get filled in.
+     */
+    private void mergeNewDefaults() {
+        try (InputStream defaultStream = plugin.getResource("config.yml")) {
+            if (defaultStream == null) {
+                return;
+            }
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(defaultStream, StandardCharsets.UTF_8));
+            FileConfiguration config = plugin.getConfig();
+            config.setDefaults(defaults);
+            config.options().copyDefaults(true);
+            plugin.saveConfig();
+            plugin.reloadConfig();
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.WARNING, "Falha ao mesclar novos valores padrao no config.yml", e);
         }
     }
 
