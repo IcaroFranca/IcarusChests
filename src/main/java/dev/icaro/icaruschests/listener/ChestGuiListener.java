@@ -12,6 +12,7 @@ import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -381,14 +382,17 @@ public final class ChestGuiListener implements Listener {
     }
 
     /**
-     * Forces a full client resync after putting a slot or the cursor at an amount beyond the
-     * item's normal max stack size — without this, the client's own prediction can keep showing
-     * the old (normal-capped) count, or briefly show the same items in two places, until
-     * something else forces a redraw.
+     * Forces a full client resync, one tick later, after putting a slot or the cursor at an
+     * amount beyond the item's normal max stack size — without this, the client's own click
+     * prediction can keep showing the old (normal-capped) count, or briefly show the same items
+     * in two places, until something else forces a redraw. This has to happen on the NEXT tick,
+     * not immediately: cancelling an InventoryClickEvent already makes Bukkit resync the view
+     * right after this handler returns, and calling updateInventory() any earlier just gets
+     * overwritten by that automatic resync a moment later.
      */
     private void resync(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof Player player) {
-            player.updateInventory();
+            Bukkit.getScheduler().runTask(plugin, player::updateInventory);
         }
     }
 
