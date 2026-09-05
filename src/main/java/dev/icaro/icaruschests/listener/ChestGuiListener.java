@@ -12,7 +12,6 @@ import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -98,7 +97,7 @@ public final class ChestGuiListener implements Listener {
         int slot = event.getSlot();
 
         if (!GuiFactory.isControlSlot(chest, slot)) {
-            handleContentSlotClick(event, chest);
+            handleContentSlotClick(event, holder, chest);
             return;
         }
 
@@ -250,7 +249,16 @@ public final class ChestGuiListener implements Listener {
         });
     }
 
-    private void handleContentSlotClick(InventoryClickEvent event, IcarusChest chest) {
+    /**
+     * Deliberately never touches {@code event.setCurrentItem()} for the slot itself — it mutates
+     * {@code chest.getContents()} (the authoritative array) directly and redraws the whole
+     * visible window from it via {@link GuiFactory#populate}, exactly like scrolling and
+     * installing/removing an upgrade already do. That's what actually gets an amount past 64 to
+     * reliably show up: patching the click's own slot through the event was found to be lossy —
+     * whatever the live view showed at the next scroll/close, right or stale, is what {@code
+     * syncVisibleToChest} would persist, so the two could disagree on what the slot really held.
+     */
+    private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
         ClickType click = event.getClick();
         if (click != ClickType.LEFT && click != ClickType.RIGHT) {
             return; // Filter/Stack cover left/right clicks and shift-clicks (see handleShiftDeposit); drag is handled separately
@@ -262,8 +270,11 @@ public final class ChestGuiListener implements Listener {
             return;
         }
 
+        Inventory topInventory = event.getView().getTopInventory();
+        int globalIndex = holder.getScrollOffset() + event.getSlot();
+        ItemStack[] contents = chest.getContents();
+        ItemStack slotItem = contents[globalIndex];
         ItemStack cursor = event.getCursor();
-        ItemStack slotItem = event.getCurrentItem();
         boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
         boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
 
@@ -275,9 +286,10 @@ public final class ChestGuiListener implements Listener {
                     ? Math.min(slotItem.getMaxStackSize(), slotItem.getAmount())
                     : Math.min(slotItem.getMaxStackSize(), (slotItem.getAmount() + 1) / 2);
             int remaining = slotItem.getAmount() - taking;
-            event.setCurrentItem(remaining > 0 ? withAmount(slotItem, remaining) : null);
+            contents[globalIndex] = remaining > 0 ? withAmount(slotItem, remaining) : null;
             event.setCursor(withAmount(slotItem, taking));
-            resync(event);
+            chest.setDirty(true);
+            GuiFactory.populate(chest, holder, topInventory);
             return;
         }
 
@@ -307,10 +319,11 @@ public final class ChestGuiListener implements Listener {
             }
             event.setCancelled(true);
             int toMove = Math.min(spaceLeft, depositAmount);
-            event.setCurrentItem(withAmount(slotItem, slotItem.getAmount() + toMove));
+            contents[globalIndex] = withAmount(slotItem, slotItem.getAmount() + toMove);
             int cursorRemaining = cursor.getAmount() - toMove;
             event.setCursor(cursorRemaining > 0 ? withAmount(cursor, cursorRemaining) : null);
-            resync(event);
+            chest.setDirty(true);
+            GuiFactory.populate(chest, holder, topInventory);
         }
     }
 
@@ -378,22 +391,6 @@ public final class ChestGuiListener implements Listener {
         chest.setDirty(true);
         event.setCurrentItem(remaining > 0 ? withAmount(shifted, remaining) : null);
         GuiFactory.populate(chest, holder, event.getView().getTopInventory());
-        resync(event);
-    }
-
-    /**
-     * Forces a full client resync, one tick later, after putting a slot or the cursor at an
-     * amount beyond the item's normal max stack size — without this, the client's own click
-     * prediction can keep showing the old (normal-capped) count, or briefly show the same items
-     * in two places, until something else forces a redraw. This has to happen on the NEXT tick,
-     * not immediately: cancelling an InventoryClickEvent already makes Bukkit resync the view
-     * right after this handler returns, and calling updateInventory() any earlier just gets
-     * overwritten by that automatic resync a moment later.
-     */
-    private void resync(InventoryClickEvent event) {
-        if (event.getWhoClicked() instanceof Player player) {
-            Bukkit.getScheduler().runTask(plugin, player::updateInventory);
-        }
     }
 
     private static ItemStack withAmount(ItemStack base, int amount) {
