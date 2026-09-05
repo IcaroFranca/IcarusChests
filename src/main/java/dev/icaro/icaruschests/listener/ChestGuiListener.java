@@ -38,9 +38,10 @@ import java.util.stream.Collectors;
 /**
  * Handles clicks, drags and closes on IcarusChests GUIs:
  * <ul>
- *   <li>the scroll buttons (or the mouse wheel — see {@link #onHotbarScroll})
- *       sync the visible slots back into the chest before redrawing the same
- *       inventory at the new offset, no close/reopen, so no flicker;</li>
+ *   <li>the scroll buttons sync the visible slots back into the chest before
+ *       redrawing the same inventory at the new offset, no close/reopen, so
+ *       no flicker (see {@link #onHotbarScroll} for why mouse-wheel scrolling
+ *       — the other obvious way to do this — isn't a real alternative);</li>
  *   <li>the chest's upgrade slots accept dragging a matching upgrade item in
  *       (installs it) or clicking with an empty cursor (removes it back to
  *       the cursor) — removing an installed Stack upgrade is refused (with a
@@ -398,13 +399,17 @@ public final class ChestGuiListener implements Listener {
     }
 
     /**
-     * Repurposes hotbar-slot scrolling (mouse wheel, or a direct number-key
-     * press) as GUI scrolling while an IcarusChests window is open — Minecraft
-     * doesn't expose a scrollbar widget to server-controlled container
-     * screens, so this is the closest thing to it. A number-key press lands
-     * here too since both fire the same event; a jump of more than one slot
-     * isn't a wheel tick, so it's just swallowed rather than guessing a
-     * direction.
+     * Attempts to repurpose hotbar-slot scrolling (mouse wheel, or a direct
+     * number-key press) as GUI scrolling while an IcarusChests window is
+     * open, since Minecraft doesn't expose a real scrollbar widget to
+     * server-controlled container screens. Confirmed (in-game, by the user)
+     * to be a dead end on a standard client: scrolling the mouse wheel while
+     * any container screen is open doesn't change the selected hotbar slot
+     * at all — the client itself never sends the slot-change packet this
+     * event depends on, so no server-side plugin can detect that scroll no
+     * matter what. Left in (harmless, just unreachable) in case some client
+     * setup does still send it; the clickable arrows in the control row are
+     * the one navigation path guaranteed to work.
      */
     @EventHandler(ignoreCancelled = true)
     public void onHotbarScroll(PlayerItemHeldEvent event) {
