@@ -10,6 +10,8 @@ import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
+import dev.icaro.icaruschests.upgrade.TierUpgradeService;
+import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
@@ -33,6 +35,8 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private ChestRepository chestRepository;
     private ChestManager chestManager;
     private AutosaveTask autosaveTask;
+    private UpgradeKitRegistry upgradeKitRegistry;
+    private TierUpgradeService tierUpgradeService;
 
     @Override
     public void onEnable() {
@@ -46,6 +50,9 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         chestRepository = new ChestRepository(database);
         chestManager = new ChestManager(chestRepository, this);
         autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
+        upgradeKitRegistry = new UpgradeKitRegistry(this);
+        tierUpgradeService = new TierUpgradeService(chestRepository, this);
+        upgradeKitRegistry.registerRecipes();
 
         registerCommands();
         registerListeners();
@@ -100,7 +107,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         PluginManager pluginManager = getServer().getPluginManager();
         pluginManager.registerEvents(new ChestPlaceListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestBreakListener(chestManager, chestRepository, this), this);
-        pluginManager.registerEvents(new ChestInteractListener(chestManager), this);
+        pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager), this);
     }
 
