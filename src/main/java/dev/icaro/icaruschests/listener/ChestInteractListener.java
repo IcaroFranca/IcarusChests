@@ -2,29 +2,36 @@ package dev.icaro.icaruschests.listener;
 
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.gui.GuiFactory;
+import dev.icaro.icaruschests.model.IcarusChest;
+import dev.icaro.icaruschests.upgrade.TierUpgradeService;
+import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 
 /**
- * Opens the custom tiered GUI instead of the vanilla chest inventory when a
- * player right-clicks an IcarusChest.
- *
- * <p>M3 scope only: the shift-click-with-upgrade-kit flow (M5) is not yet
- * implemented, so right-clicking always opens the GUI regardless of what the
- * player is holding.
+ * Opens the custom tiered GUI when a player right-clicks an IcarusChest, or
+ * applies an upgrade kit instead when they shift-right-click while holding
+ * one that matches the chest's next tier.
  */
 public final class ChestInteractListener implements Listener {
 
     private final ChestManager chestManager;
+    private final TierUpgradeService tierUpgradeService;
 
-    public ChestInteractListener(ChestManager chestManager) {
+    public ChestInteractListener(ChestManager chestManager, TierUpgradeService tierUpgradeService) {
         this.chestManager = chestManager;
+        this.tierUpgradeService = tierUpgradeService;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -42,9 +49,28 @@ public final class ChestInteractListener implements Listener {
 
         chestManager.getOrLoadFromBlock(block).ifPresent(chest -> {
             event.setCancelled(true);
+            Player player = event.getPlayer();
+            ItemStack inHand = player.getInventory().getItemInMainHand();
+
+            if (player.isSneaking() && UpgradeKitRegistry.targetTierOf(inHand).isPresent()) {
+                handleUpgradeAttempt(player, chest, inHand);
+                return;
+            }
+
             // Always opens page 0; remembering a player's last-viewed page is
             // a nice-to-have left for later polish.
-            GuiFactory.open(event.getPlayer(), chest, 0);
+            GuiFactory.open(player, chest, 0);
         });
+    }
+
+    private void handleUpgradeAttempt(Player player, IcarusChest chest, ItemStack kit) {
+        if (!tierUpgradeService.tryUpgrade(chest, kit)) {
+            player.sendMessage(Component.text("Este kit nao serve para o proximo tier deste bau.", NamedTextColor.RED));
+            return;
+        }
+
+        kit.setAmount(kit.getAmount() - 1);
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+        player.sendMessage(Component.text("Bau evoluido para " + chest.getTier().displayName() + "!", NamedTextColor.GREEN));
     }
 }
