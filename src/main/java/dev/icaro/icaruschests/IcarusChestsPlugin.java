@@ -4,6 +4,7 @@ import dev.icaro.icaruschests.chest.AutosaveTask;
 import dev.icaro.icaruschests.chest.ChestDestructionHandler;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
+import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.listener.ChestBreakListener;
 import dev.icaro.icaruschests.listener.ChestGuiListener;
@@ -18,6 +19,7 @@ import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.concurrent.CompletionException;
 
@@ -30,13 +32,14 @@ import java.util.concurrent.CompletionException;
  */
 public final class IcarusChestsPlugin extends JavaPlugin {
 
-    private static final long AUTOSAVE_PERIOD_TICKS = 20L * 60 * 5; // 5 minutes; becomes configurable in M7
     private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
 
     private Database database;
     private ChestRepository chestRepository;
     private ChestManager chestManager;
+    private ConfigManager configManager;
     private AutosaveTask autosaveTask;
+    private BukkitTask autosaveTaskHandle;
     private UpgradeKitRegistry upgradeKitRegistry;
     private TierUpgradeService tierUpgradeService;
     private ChestDestructionHandler destructionHandler;
@@ -44,6 +47,8 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         NamespacedKeys.init(this);
+        configManager = new ConfigManager(this);
+        configManager.load();
 
         if (!openDatabase()) {
             getServer().getPluginManager().disablePlugin(this);
@@ -60,9 +65,23 @@ public final class IcarusChestsPlugin extends JavaPlugin {
 
         registerCommands();
         registerListeners();
-        getServer().getScheduler().runTaskTimer(this, autosaveTask, AUTOSAVE_PERIOD_TICKS, AUTOSAVE_PERIOD_TICKS);
+        rescheduleAutosave();
 
         getLogger().info("IcarusChests habilitado (v" + getPluginMeta().getVersion() + ").");
+    }
+
+    /** Reloads {@code config.yml} and applies the (possibly changed) autosave interval immediately. */
+    public void reloadPluginConfig() {
+        configManager.load();
+        rescheduleAutosave();
+    }
+
+    private void rescheduleAutosave() {
+        if (autosaveTaskHandle != null) {
+            autosaveTaskHandle.cancel();
+        }
+        long period = configManager.autosaveIntervalTicks();
+        autosaveTaskHandle = getServer().getScheduler().runTaskTimer(this, autosaveTask, period, period);
     }
 
     @Override
@@ -101,7 +120,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private void registerCommands() {
         var command = getCommand("icaruschests");
         if (command != null) {
-            IcarusChestsCommand executor = new IcarusChestsCommand(this);
+            IcarusChestsCommand executor = new IcarusChestsCommand(this, upgradeKitRegistry);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         }
