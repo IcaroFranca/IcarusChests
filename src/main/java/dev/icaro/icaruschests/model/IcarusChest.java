@@ -3,7 +3,6 @@ package dev.icaro.icaruschests.model;
 import dev.icaro.icaruschests.tier.ChestTier;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.Arrays;
 import java.util.UUID;
 
 /**
@@ -13,12 +12,11 @@ import java.util.UUID;
  * resolves to this same instance (see {@code ChestManager}).
  *
  * <p>{@link #doubled} means this primary currently has a linked secondary;
- * while true, its effective capacity ({@link #effectivePageSizes()}) is
- * exactly double {@link ChestTier#totalCapacity()} — the tier's own page
- * layout repeated twice. {@link #contents} is indexed globally across all
- * (effective) pages; slots a page's GUI reserves for navigation buttons are
- * simply never read from or written to, so they permanently reduce usable
- * capacity by one each (see {@code GuiFactory}).
+ * while true, its effective capacity ({@link #effectiveTotalCapacity()}) is
+ * exactly double {@link ChestTier#totalCapacity()}. {@link #contents} is
+ * indexed globally, scrolled through a row at a time by the GUI — see
+ * {@code GuiFactory} — with no slots sacrificed to navigation (the scroll
+ * controls live in their own dedicated row, not carved out of capacity).
  */
 public final class IcarusChest {
 
@@ -61,24 +59,9 @@ public final class IcarusChest {
         this.doubled = doubled;
     }
 
-    /** This tier's own page layout, repeated twice if {@link #isDoubled()}. */
-    public int[] effectivePageSizes() {
-        int[] base = tier.pageSizes();
-        if (!doubled) {
-            return base;
-        }
-        int[] doubledSizes = new int[base.length * 2];
-        System.arraycopy(base, 0, doubledSizes, 0, base.length);
-        System.arraycopy(base, 0, doubledSizes, base.length, base.length);
-        return doubledSizes;
-    }
-
+    /** This tier's own capacity, doubled if {@link #isDoubled()}. Always a multiple of 9. */
     public int effectiveTotalCapacity() {
-        return Arrays.stream(effectivePageSizes()).sum();
-    }
-
-    public int pages() {
-        return effectivePageSizes().length;
+        return tier.totalCapacity() * (doubled ? 2 : 1);
     }
 
     /** Full, globally-indexed backing array (size {@link #effectiveTotalCapacity()}). Mutated in place by the GUI layer. */

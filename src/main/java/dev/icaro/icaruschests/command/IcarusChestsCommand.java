@@ -1,6 +1,7 @@
 package dev.icaro.icaruschests.command;
 
 import dev.icaro.icaruschests.IcarusChestsPlugin;
+import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
@@ -89,7 +90,8 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
                 + loc.getBlockZ() + ")", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  Tier: " + c.getTier().displayName()
                         + (c.isDoubled() ? " (duplo)" : "")
-                        + " (" + c.effectiveTotalCapacity() + " slots, " + c.pages() + " página(s))",
+                        + " (" + c.effectiveTotalCapacity() + " slots"
+                        + (GuiFactory.isScrollable(c.effectiveTotalCapacity()) ? ", rolável" : "") + ")",
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("  Id: " + c.getId(), NamedTextColor.GRAY));
         return true;

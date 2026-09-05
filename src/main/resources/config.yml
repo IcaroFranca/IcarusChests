@@ -2,3 +2,14 @@
 # alteracoes pendentes ("dirty"). O flush final ao desligar o servidor
 # sempre salva tudo, independente deste valor. Minimo efetivo: 1 segundo.
 autosave-interval-seconds: 300
+
+# Textura (Base64) de cabeca customizada pra cada kit de upgrade, no formato
+# do minecraft-heads.com: abra a pagina de uma cabeca, clique em "Give Command"
+# e copie o valor bem longo depois de "Value:" (comeca com "eyJ0ZXh0dXJlcyI6").
+# Deixe vazio pra usar o icone padrao (o minerio do tier).
+upgrade-kit-heads:
+  copper: ""
+  iron: ""
+  gold: ""
+  diamond: ""
+  netherite: ""

@@ -57,9 +57,9 @@ public final class ChestInteractListener implements Listener {
                 return;
             }
 
-            // Always opens page 0; remembering a player's last-viewed page is
-            // a nice-to-have left for later polish.
-            GuiFactory.open(player, chest, 0);
+            // Always opens scrolled to the top; remembering a player's last
+            // scroll position is a nice-to-have left for later polish.
+            GuiFactory.open(player, chest);
         });
     }
 

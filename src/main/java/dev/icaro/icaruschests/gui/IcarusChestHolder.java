@@ -8,24 +8,27 @@ import org.jetbrains.annotations.NotNull;
 import java.util.UUID;
 
 /**
- * Marks an {@link Inventory} as an IcarusChests page GUI, carrying enough
- * identity to resolve back to the {@code IcarusChest} it represents and
- * which page is currently displayed. Built and attached by {@link GuiFactory}
- * only — the inventory reference is assigned right after construction since
- * Bukkit requires the holder to exist before the inventory it owns can be
- * created.
+ * Marks an {@link Inventory} as an IcarusChests GUI, carrying enough identity
+ * to resolve back to the {@code IcarusChest} it represents. Built and
+ * attached by {@link GuiFactory} only — the inventory reference is assigned
+ * right after construction since Bukkit requires the holder to exist before
+ * the inventory it owns can be created.
+ *
+ * <p>Unlike the {@code IcarusChest} it points to, a holder is scoped to one
+ * viewing session: {@link #scrollOffset} is mutated in place as the viewer
+ * scrolls (see {@code ChestGuiListener}), since scrolling reuses the same
+ * {@link Inventory} rather than reopening a new one.
  */
 public final class IcarusChestHolder implements InventoryHolder {
 
     private final UUID chestId;
     private final ChestTier tier;
-    private final int page;
     private Inventory inventory;
+    private int scrollOffset;
 
-    IcarusChestHolder(UUID chestId, ChestTier tier, int page) {
+    IcarusChestHolder(UUID chestId, ChestTier tier) {
         this.chestId = chestId;
         this.tier = tier;
-        this.page = page;
     }
 
     @Override
@@ -45,7 +48,11 @@ public final class IcarusChestHolder implements InventoryHolder {
         return tier;
     }
 
-    public int getPage() {
-        return page;
+    public int getScrollOffset() {
+        return scrollOffset;
+    }
+
+    void setScrollOffset(int scrollOffset) {
+        this.scrollOffset = scrollOffset;
     }
 }
