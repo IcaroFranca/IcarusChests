@@ -1,5 +1,6 @@
 package dev.icaro.icaruschests.upgrade;
 
+import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.tier.ChestTier;
@@ -16,7 +17,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.profile.PlayerProfile;
 
 import java.util.List;
 import java.util.Optional;
@@ -87,7 +87,7 @@ public final class UpgradeKitRegistry {
     private ItemStack customHeadIcon(String base64Texture) {
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) item.getItemMeta();
-        PlayerProfile profile = Bukkit.createProfile(UUID.randomUUID());
+        PlayerProfile profile = (PlayerProfile) Bukkit.createProfile(UUID.randomUUID());
         profile.setProperty(new ProfileProperty("textures", base64Texture));
         meta.setPlayerProfile(profile);
         item.setItemMeta(meta);
