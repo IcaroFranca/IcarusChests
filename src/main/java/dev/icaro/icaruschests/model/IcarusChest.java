@@ -1,6 +1,7 @@
 package dev.icaro.icaruschests.model;
 
 import dev.icaro.icaruschests.tier.ChestTier;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
 
@@ -9,8 +10,13 @@ import java.util.UUID;
  * exists per physical chest block; a double chest is two linked instances
  * (see {@link #linkedChestId}), not one instance spanning both halves.
  *
- * <p>M2 scope: identity, location and tier only. Inventory contents and
- * {@code dirty}-tracking for persistence are added in M4.
+ * <p>{@link #contents} is indexed globally across all pages
+ * ({@code page * tier.slotsPerPage() + localSlot}); slots that a page's GUI
+ * reserves for navigation buttons are simply never read from or written to,
+ * so they permanently reduce usable capacity by one each (see
+ * {@code GuiFactory}). Nothing here is persisted yet — SQLite-backed
+ * load/save and {@code dirty}-triggered saving arrive in M4, so contents are
+ * currently lost on server restart.
  */
 public final class IcarusChest {
 
@@ -18,11 +24,14 @@ public final class IcarusChest {
     private final ChestLocation location;
     private ChestTier tier;
     private UUID linkedChestId;
+    private ItemStack[] contents;
+    private boolean dirty;
 
     public IcarusChest(UUID id, ChestLocation location, ChestTier tier) {
         this.id = id;
         this.location = location;
         this.tier = tier;
+        this.contents = new ItemStack[tier.totalCapacity()];
     }
 
     public UUID getId() {
@@ -52,5 +61,18 @@ public final class IcarusChest {
 
     public boolean isLinked() {
         return linkedChestId != null;
+    }
+
+    /** Full, globally-indexed backing array (size {@code tier.totalCapacity()}). Mutated in place by the GUI layer. */
+    public ItemStack[] getContents() {
+        return contents;
+    }
+
+    public boolean isDirty() {
+        return dirty;
+    }
+
+    public void setDirty(boolean dirty) {
+        this.dirty = dirty;
     }
 }

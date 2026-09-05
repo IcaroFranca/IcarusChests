@@ -3,6 +3,8 @@ package dev.icaro.icaruschests;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
 import dev.icaro.icaruschests.listener.ChestBreakListener;
+import dev.icaro.icaruschests.listener.ChestGuiListener;
+import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.plugin.PluginManager;
@@ -48,6 +50,8 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         PluginManager pluginManager = getServer().getPluginManager();
         pluginManager.registerEvents(new ChestPlaceListener(chestManager), this);
         pluginManager.registerEvents(new ChestBreakListener(chestManager), this);
+        pluginManager.registerEvents(new ChestInteractListener(chestManager), this);
+        pluginManager.registerEvents(new ChestGuiListener(chestManager), this);
     }
 
     public ChestManager getChestManager() {
