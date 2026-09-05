@@ -1,0 +1,4 @@
+# Intervalo, em segundos, entre cada varredura de autosave dos baus com
+# alteracoes pendentes ("dirty"). O flush final ao desligar o servidor
+# sempre salva tudo, independente deste valor. Minimo efetivo: 1 segundo.
+autosave-interval-seconds: 300
