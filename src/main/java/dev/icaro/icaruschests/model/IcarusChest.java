@@ -68,6 +68,11 @@ public final class IcarusChest {
         return contents;
     }
 
+    /** Replaces the entire backing array, e.g. after hydrating from SQLite. Does not itself mark dirty. */
+    public void setContents(ItemStack[] contents) {
+        this.contents = contents;
+    }
+
     public boolean isDirty() {
         return dirty;
     }
