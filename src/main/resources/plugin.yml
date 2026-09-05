@@ -1,0 +1,13 @@
+name: IcarusChests
+version: '${version}'
+main: dev.icaro.icaruschests.IcarusChestsPlugin
+api-version: '1.21'
+author: IcaroFranca
+description: Tiered storage chests for Paper servers, inspired by Sophisticated Storage.
+website: https://github.com/IcaroFranca/IcarusChests
+
+commands:
+  icaruschests:
+    description: Main IcarusChests command.
+    aliases: [icarus, ic]
+    usage: /<command> ping
