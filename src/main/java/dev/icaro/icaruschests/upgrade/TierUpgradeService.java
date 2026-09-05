@@ -57,6 +57,9 @@ public final class TierUpgradeService {
     private void apply(IcarusChest chest, ChestTier newTier) {
         int newCapacity = newTier.totalCapacity() * (chest.isDoubled() ? 2 : 1);
         chest.setContents(Arrays.copyOf(chest.getContents(), newCapacity));
+        // Slot count never decreases between tiers, so this can't drop an installed upgrade;
+        // no DB write needed either, existing rows keep pointing at the same (still valid) indices.
+        chest.setUpgrades(Arrays.copyOf(chest.getUpgrades(), newTier.upgradeSlotCount()));
         chest.setTier(newTier);
         chest.setDirty(true);
 

@@ -37,6 +37,9 @@ public final class NamespacedKeys {
     /** Tag on a double chest primary's own PDC: {@code 1} while it has a linked secondary, absent/{@code 0} otherwise. */
     public static NamespacedKey DOUBLED;
 
+    /** Tag on a pluggable upgrade item's PDC identifying its {@code UpgradeType} name. */
+    public static NamespacedKey UPGRADE_TYPE;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
@@ -44,5 +47,6 @@ public final class NamespacedKeys {
         NAV_ACTION = new NamespacedKey(plugin, "nav_action");
         LINK_TARGET = new NamespacedKey(plugin, "link_target");
         DOUBLED = new NamespacedKey(plugin, "doubled");
+        UPGRADE_TYPE = new NamespacedKey(plugin, "upgrade_type");
     }
 }

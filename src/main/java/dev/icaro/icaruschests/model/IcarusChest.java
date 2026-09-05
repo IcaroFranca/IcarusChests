@@ -17,6 +17,8 @@ import java.util.UUID;
  * indexed globally, scrolled through a row at a time by the GUI — see
  * {@code GuiFactory} — with no slots sacrificed to navigation (the scroll
  * controls live in their own dedicated row, not carved out of capacity).
+ * {@link #upgrades} is separate: {@code tier.upgradeSlotCount()} pluggable-
+ * upgrade slots, unaffected by doubling.
  */
 public final class IcarusChest {
 
@@ -25,6 +27,7 @@ public final class IcarusChest {
     private ChestTier tier;
     private boolean doubled;
     private ItemStack[] contents;
+    private ItemStack[] upgrades;
     private boolean dirty;
 
     public IcarusChest(UUID id, ChestLocation location, ChestTier tier) {
@@ -32,6 +35,7 @@ public final class IcarusChest {
         this.location = location;
         this.tier = tier;
         this.contents = new ItemStack[tier.totalCapacity()];
+        this.upgrades = new ItemStack[tier.upgradeSlotCount()];
     }
 
     public UUID getId() {
@@ -72,6 +76,16 @@ public final class IcarusChest {
     /** Replaces the entire backing array, e.g. after hydrating from SQLite or resizing on upgrade/link. Does not itself mark dirty. */
     public void setContents(ItemStack[] contents) {
         this.contents = contents;
+    }
+
+    /** One entry per upgrade slot (size {@code tier.upgradeSlotCount()}); {@code null} means the slot is empty. */
+    public ItemStack[] getUpgrades() {
+        return upgrades;
+    }
+
+    /** Replaces the entire upgrades array, e.g. after hydrating from SQLite or resizing on tier upgrade. */
+    public void setUpgrades(ItemStack[] upgrades) {
+        this.upgrades = upgrades;
     }
 
     public boolean isDirty() {
