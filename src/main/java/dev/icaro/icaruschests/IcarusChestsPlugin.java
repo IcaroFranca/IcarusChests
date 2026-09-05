@@ -1,14 +1,21 @@
 package dev.icaro.icaruschests;
 
+import dev.icaro.icaruschests.chest.AutosaveTask;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
+import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.listener.ChestBreakListener;
 import dev.icaro.icaruschests.listener.ChestGuiListener;
 import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
+import dev.icaro.icaruschests.persistence.ChestRepository;
+import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.util.NamespacedKeys;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.concurrent.CompletionException;
 
 /**
  * Entry point for the IcarusChests plugin.
@@ -19,22 +26,65 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class IcarusChestsPlugin extends JavaPlugin {
 
+    private static final long AUTOSAVE_PERIOD_TICKS = 20L * 60 * 5; // 5 minutes; becomes configurable in M7
+    private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
+
+    private Database database;
+    private ChestRepository chestRepository;
     private ChestManager chestManager;
+    private AutosaveTask autosaveTask;
 
     @Override
     public void onEnable() {
         NamespacedKeys.init(this);
-        chestManager = new ChestManager();
+
+        if (!openDatabase()) {
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        chestRepository = new ChestRepository(database);
+        chestManager = new ChestManager(chestRepository, this);
+        autosaveTask = new AutosaveTask(chestManager, chestRepository, getLogger());
 
         registerCommands();
         registerListeners();
+        getServer().getScheduler().runTaskTimer(this, autosaveTask, AUTOSAVE_PERIOD_TICKS, AUTOSAVE_PERIOD_TICKS);
 
         getLogger().info("IcarusChests habilitado (v" + getPluginMeta().getVersion() + ").");
     }
 
     @Override
     public void onDisable() {
+        closeOpenChestGuis();
+        if (autosaveTask != null) {
+            autosaveTask.flush(SHUTDOWN_FLUSH_TIMEOUT_SECONDS);
+        }
+        if (database != null) {
+            database.close(SHUTDOWN_FLUSH_TIMEOUT_SECONDS);
+        }
         getLogger().info("IcarusChests desabilitado.");
+    }
+
+    /** Blocks briefly at startup so the schema is guaranteed ready before any listener runs. */
+    private boolean openDatabase() {
+        database = new Database(this);
+        try {
+            database.open().join();
+            return true;
+        } catch (CompletionException e) {
+            getLogger().severe("Nao foi possivel abrir o banco SQLite do IcarusChests: " + e.getCause());
+            return false;
+        }
+    }
+
+    /** Forces any player currently viewing a tiered chest GUI to close it, so its edits are synced before the final flush. */
+    private void closeOpenChestGuis() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            if (player.getOpenInventory().getTopInventory().getHolder() instanceof IcarusChestHolder) {
+                player.closeInventory();
+            }
+        }
     }
 
     private void registerCommands() {
@@ -48,8 +98,8 @@ public final class IcarusChestsPlugin extends JavaPlugin {
 
     private void registerListeners() {
         PluginManager pluginManager = getServer().getPluginManager();
-        pluginManager.registerEvents(new ChestPlaceListener(chestManager), this);
-        pluginManager.registerEvents(new ChestBreakListener(chestManager), this);
+        pluginManager.registerEvents(new ChestPlaceListener(chestManager, chestRepository, this), this);
+        pluginManager.registerEvents(new ChestBreakListener(chestManager, chestRepository, this), this);
         pluginManager.registerEvents(new ChestInteractListener(chestManager), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager), this);
     }
