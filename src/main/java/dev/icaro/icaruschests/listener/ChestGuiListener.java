@@ -53,12 +53,15 @@ import java.util.stream.Collectors;
  *       upgrade lets an existing stack keep growing past the item's normal
  *       limit, up to that tier's multiplier (see {@code UpgradeType}) — both
  *       cover left/right clicks and shift-clicks from the player's own
- *       inventory, and dragging is at least blocked by the Filter; any
- *       interaction other than left/right-click (number-key swap,
- *       double-click collect, drop, swap to offhand, …) is refused outright
- *       on a slot whose true amount already exceeds its normal max stack, so
- *       none of them can desync the client's view of it from what the chest
- *       actually holds (see {@link #handleContentSlotClick}).</li>
+ *       inventory, and dragging is at least blocked by the Filter; a slot
+ *       whose true amount already exceeds its normal max stack only ever
+ *       accepts a left/right click that either withdraws from it (empty
+ *       cursor) or tops it off with more of the *same* item — any other
+ *       interaction (number-key swap, double-click collect, drop, swap to
+ *       offhand, or a left/right-click holding a *different* item) is
+ *       refused outright, so none of them can desync the client's view of it
+ *       from what the chest actually holds (see {@link
+ *       #handleContentSlotClick}).</li>
  *   <li>a slot holding more than an item's normal max stack (a Stack
  *       upgrade) is never handed to the client at its real amount — see
  *       {@code GuiFactory#populate}/{@code #displayItemFor}, which caps what
@@ -317,6 +320,18 @@ public final class ChestGuiListener implements Listener {
 
         if (cursorEmpty) {
             return; // a plain pickup vanilla can already handle correctly
+        }
+
+        if (overstacked && !slotItem.isSimilar(cursor)) {
+            // The slot holds more than a normal stack of a *different* item than what's on the
+            // cursor. Vanilla's default left/right-click here would swap the cursor and the slot —
+            // but that swap only ever touches the live view, never chest.getContents(); the real,
+            // overstacked item would stay stranded in the authoritative array and come right back
+            // on the next populate(), while the player also walks away with what they just
+            // "swapped" in — a duplicate. Withdraw the whole overstacked stack first (see above),
+            // then place the new item once the slot is actually empty.
+            event.setCancelled(true);
+            return;
         }
 
         if (filterItem.isPresent()) {
