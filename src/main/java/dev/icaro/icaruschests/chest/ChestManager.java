@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
@@ -32,13 +33,20 @@ import java.util.logging.Level;
  * <p>The block's own PDC tags remain the fast, synchronous way to tell "is
  * this one of ours, and what's its id/tier" (survives restarts on their own,
  * since tile entity PDC is persisted by the server with the chunk). SQLite is
- * the authority for contents: a cache miss reconstructs the chest
- * synchronously from PDC first (so callers on the main thread get an answer
- * immediately, with a correctly-sized but possibly-blank contents array),
- * then kicks off an async load from {@link ChestRepository} that fills in the
- * real contents once it completes. A GUI opened in the handful of ticks
- * between those two steps (only possible right after a fresh server start)
- * would see it as empty; this is a known, rare edge case for now.
+ * the authority for contents and upgrades: a cache miss reconstructs the
+ * chest synchronously from PDC first (so callers on the main thread get an
+ * answer immediately, with a correctly-sized but possibly-blank contents
+ * array), then kicks off two async loads from {@link ChestRepository} —
+ * contents and upgrades — that fill in the real state once both complete.
+ * That combined completion is tracked per chest id (see {@link
+ * #isReady(UUID)}/{@link #whenReady}); anything that reads, mutates, or
+ * persists a chest right after obtaining it (opening its GUI, applying a
+ * tier-upgrade kit) goes through {@link #whenReady} first, so it can never
+ * act on a still-blank array a moment before hydration silently replaces it
+ * — only right after a fresh server start does this actually defer anything,
+ * and only by however long the two SQLite reads take (typically well under a
+ * tick). Breaking a chest in that same handful-of-ticks window is the one
+ * caller that doesn't wait; a narrow, acknowledged edge case for now.
  *
  * <p><b>Double chests:</b> a chest linked into a double chest has exactly one
  * {@link IcarusChest} (the "primary", whichever half existed first). Its
@@ -53,6 +61,8 @@ public final class ChestManager {
 
     private final Map<UUID, IcarusChest> byId = new ConcurrentHashMap<>();
     private final Map<ChestLocation, UUID> idByLocation = new ConcurrentHashMap<>();
+    /** Chests currently mid-hydration (see {@link #loadFromBlock}); absent/done means safe to use. */
+    private final Map<UUID, CompletableFuture<Void>> pendingHydration = new ConcurrentHashMap<>();
     private final ChestRepository chestRepository;
     private final UpgradeRegistry upgradeRegistry;
     private final Plugin plugin;
@@ -64,14 +74,33 @@ public final class ChestManager {
     }
 
     /** Async-hydrates {@code chest}'s upgrade slots from SQLite; call once right after registering a freshly reconstructed chest. */
-    private void hydrateUpgradesAsync(IcarusChest chest) {
-        chestRepository.loadUpgrades(chest.getId())
-                .thenAccept(bySlot -> Bukkit.getScheduler().runTask(plugin, () -> applyLoadedUpgrades(chest, bySlot)))
+    private CompletableFuture<Void> hydrateUpgradesAsync(IcarusChest chest) {
+        return chestRepository.loadUpgrades(chest.getId())
+                .thenCompose(bySlot -> runOnMainThread(() -> applyLoadedUpgrades(chest, bySlot)))
                 .exceptionally(ex -> {
                     plugin.getLogger().log(Level.WARNING,
                             "Falha ao carregar upgrades do bau " + chest.getId(), ex);
                     return null;
                 });
+    }
+
+    /**
+     * Runs {@code action} on the main thread and returns a future that completes only once it
+     * actually ran — {@code Bukkit.getScheduler().runTask()} alone merely schedules it for a
+     * later tick, so a plain {@code thenAccept(... runTask ...)} would let its own future resolve
+     * before the scheduled work executes, defeating the whole point of {@link #whenReady}.
+     */
+    private CompletableFuture<Void> runOnMainThread(Runnable action) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            try {
+                action.run();
+                future.complete(null);
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+            }
+        });
+        return future;
     }
 
     private void applyLoadedUpgrades(IcarusChest chest, Map<Integer, PersistedUpgrade> bySlot) {
@@ -175,8 +204,10 @@ public final class ChestManager {
             chest.setContents(new ItemStack[chest.effectiveTotalCapacity()]);
         }
         register(chest);
-        hydrateContentsAsync(chest);
-        hydrateUpgradesAsync(chest);
+        UUID chestId = chest.getId();
+        CompletableFuture<Void> hydration = CompletableFuture.allOf(hydrateContentsAsync(chest), hydrateUpgradesAsync(chest));
+        pendingHydration.put(chestId, hydration);
+        hydration.whenComplete((ignoredResult, ignoredException) -> pendingHydration.remove(chestId, hydration));
         return Optional.of(chest);
     }
 
@@ -195,14 +226,38 @@ public final class ChestManager {
         return getOrLoadFromBlock(primaryLocation.get().toBlock());
     }
 
-    private void hydrateContentsAsync(IcarusChest chest) {
-        chestRepository.loadContents(chest.getId(), chest.effectiveTotalCapacity())
-                .thenAccept(loaded -> loaded.ifPresent(contents ->
-                        Bukkit.getScheduler().runTask(plugin, () -> chest.setContents(contents))))
+    private CompletableFuture<Void> hydrateContentsAsync(IcarusChest chest) {
+        return chestRepository.loadContents(chest.getId(), chest.effectiveTotalCapacity())
+                .thenCompose(loaded -> loaded.isPresent()
+                        ? runOnMainThread(() -> chest.setContents(loaded.get()))
+                        : CompletableFuture.<Void>completedFuture(null))
                 .exceptionally(ex -> {
                     plugin.getLogger().log(Level.WARNING,
                             "Falha ao carregar conteudo persistido do bau " + chest.getId(), ex);
                     return null;
                 });
+    }
+
+    /** Whether {@code chestId} is fully hydrated (or was never mid-hydration to begin with) — safe to read/mutate/persist. */
+    public boolean isReady(UUID chestId) {
+        CompletableFuture<Void> pending = pendingHydration.get(chestId);
+        return pending == null || pending.isDone();
+    }
+
+    /**
+     * Runs {@code action} on the main thread once {@code chestId} is fully hydrated — immediately,
+     * if it already is (the overwhelmingly common case: anything but the first touch after a
+     * server restart). Callers that read/mutate/persist a chest right after {@link
+     * #getOrLoadFromBlock} (opening its GUI, applying a tier-upgrade kit) should always go through
+     * this rather than acting on the chest directly, so a slow first load can never let them work
+     * with a still-blank array that a moment later gets silently replaced by the real one.
+     */
+    public void whenReady(UUID chestId, Runnable action) {
+        CompletableFuture<Void> pending = pendingHydration.get(chestId);
+        if (pending == null || pending.isDone()) {
+            action.run();
+            return;
+        }
+        pending.whenComplete((ignoredResult, ignoredException) -> Bukkit.getScheduler().runTask(plugin, action));
     }
 }
