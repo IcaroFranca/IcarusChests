@@ -24,6 +24,7 @@ import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.util.GeyserSkullExport;
 import dev.icaro.icaruschests.util.NamespacedKeys;
+import dev.icaro.icaruschests.util.PortugueseItemNames;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -57,6 +58,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         NamespacedKeys.init(this);
+        PortugueseItemNames.init(this);
         configManager = new ConfigManager(this);
         configManager.load();
         GuiFactory.init(configManager);
