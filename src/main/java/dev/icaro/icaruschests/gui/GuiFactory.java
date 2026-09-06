@@ -14,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -76,7 +77,7 @@ public final class GuiFactory {
 
         ItemStack[] contents = chest.getContents();
         for (int local = 0; local < visibleSlots; local++) {
-            inventory.setItem(local, contents[offset + local]);
+            inventory.setItem(local, displayItemFor(contents[offset + local]));
         }
 
         int rowStart = controlRowStart(capacity);
@@ -128,9 +129,52 @@ public final class GuiFactory {
         int offset = holder.getScrollOffset();
         ItemStack[] contents = chest.getContents();
         for (int local = 0; local < visibleSlots; local++) {
+            ItemStack authoritative = contents[offset + local];
+            if (isOverstacked(authoritative)) {
+                // populate() drew a capped stand-in for this slot (see displayItemFor) — the live
+                // item the client actually holds isn't the real content, so reading it back here
+                // would truncate a Stack-upgraded stack down to a normal one. Any legitimate change
+                // to such a slot already goes straight through the authoritative array (see
+                // ChestGuiListener's Stack-upgrade click/shift-deposit handling), so it's left alone.
+                continue;
+            }
             contents[offset + local] = inventory.getItem(local);
         }
         chest.setDirty(true);
+    }
+
+    /**
+     * A live, client-rendered {@link ItemStack} slot is only ever expected to hold up to its own
+     * normal max stack size — Minecraft's item format hard-caps a stack's declared max size at 99
+     * (the {@code minecraft:max_stack_size} data component, since the 1.20.5 item rewrite) and
+     * assumes {@code count <= getMaxStackSize()} as an invariant almost everywhere. A Stack upgrade
+     * deliberately breaks that invariant in the chest's own authoritative array; {@link
+     * #displayItemFor} is what keeps the actual client-facing slot honest about it.
+     */
+    private static boolean isOverstacked(ItemStack item) {
+        return item != null && item.getType() != Material.AIR && item.getAmount() > item.getMaxStackSize();
+    }
+
+    /**
+     * The safe, client-facing stand-in for a slot whose true amount (a Stack upgrade) exceeds the
+     * item's own normal max stack — capped at that normal max, with the real count spelled out in a
+     * lore line instead. {@code chest.getContents()} keeps holding the real number; only what gets
+     * handed to the live {@link Inventory} slot is ever capped, so nothing about deposit/withdraw
+     * math (which reads the authoritative array, not this) changes.
+     */
+    private static ItemStack displayItemFor(ItemStack authoritative) {
+        if (!isOverstacked(authoritative)) {
+            return authoritative;
+        }
+        int trueAmount = authoritative.getAmount();
+        ItemStack display = authoritative.clone();
+        display.setAmount(display.getMaxStackSize());
+        ItemMeta meta = display.getItemMeta();
+        List<Component> lore = new ArrayList<>(meta.hasLore() ? meta.lore() : List.of());
+        lore.add(Component.text("Quantidade: " + trueAmount, NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        meta.lore(lore);
+        display.setItemMeta(meta);
+        return display;
     }
 
     /** Clamped scroll target for a {@link NavAction}; equal to {@code currentOffset} if the move isn't possible. */
