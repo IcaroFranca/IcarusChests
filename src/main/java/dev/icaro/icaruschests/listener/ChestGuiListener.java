@@ -10,6 +10,7 @@ import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.PersistedUpgrade;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
+import dev.icaro.icaruschests.util.PortugueseItemNames;
 import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
 import net.kyori.adventure.text.Component;
@@ -238,7 +239,13 @@ public final class ChestGuiListener implements Listener {
         UUID playerId = player.getUniqueId();
         player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
 
-        Block block = player.getLocation().getBlock().getRelative(BlockFace.DOWN);
+        // Two blocks above the player's feet — outside their own 2-block-tall hitbox — never the
+        // block they're actually standing on. An earlier version used the block right below their
+        // feet, which briefly removed the ground's solid collision out from under them: a sign has
+        // none of its own, so the player just sank into the now-empty space until the revert put
+        // the real block back. Nothing stands *on top of* a player's head, so swapping this one out
+        // for a few seconds can't cause the same kind of fall.
+        Block block = player.getLocation().getBlock().getRelative(BlockFace.UP, 2);
         BlockData originalData = block.getBlockData();
         block.setType(Material.OAK_SIGN, false); // no physics: skip the "needs support" check entirely
         Sign sign = (Sign) block.getState();
@@ -314,7 +321,13 @@ public final class ChestGuiListener implements Listener {
         chest.setDirty(true);
     }
 
-    /** Matches against the item's own custom name (if renamed), its pretty material name, and its raw enum name. */
+    /**
+     * Matches against the item's own custom name (if renamed), its Portuguese in-game name, its
+     * pretty English material name, and its raw enum name — in that order, since most players
+     * here will naturally type the Portuguese name they actually see in their own client, which
+     * Bukkit itself has no idea about (the server never learns a client's translated strings, only
+     * its locale code) unless it's looked up in a bundled table (see {@link PortugueseItemNames}).
+     */
     private boolean matchesSearch(ItemStack item, String queryLower) {
         if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
             String customName = PlainTextComponentSerializer.plainText()
@@ -323,6 +336,10 @@ public final class ChestGuiListener implements Listener {
             if (customName.contains(queryLower)) {
                 return true;
             }
+        }
+        Optional<String> ptName = PortugueseItemNames.of(item.getType());
+        if (ptName.isPresent() && ptName.get().toLowerCase(Locale.ROOT).contains(queryLower)) {
+            return true;
         }
         if (UpgradeRegistry.prettyName(item.getType()).toLowerCase(Locale.ROOT).contains(queryLower)) {
             return true;
