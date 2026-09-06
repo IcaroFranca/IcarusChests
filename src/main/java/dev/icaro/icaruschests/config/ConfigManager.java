@@ -34,6 +34,9 @@ public final class ConfigManager {
     // Keyed by lowercase UpgradeType name rather than the enum itself: the upgrade
     // package already depends on config, so config depending back on upgrade would cycle.
     private final Map<String, String> upgradeHeadTextures = new HashMap<>();
+    // Keyed by lowercase button name ("search", "organize") rather than an enum for the same
+    // reason as above — the gui package already depends on config.
+    private final Map<String, String> controlHeadTextures = new HashMap<>();
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -66,6 +69,17 @@ public final class ConfigManager {
                 String texture = upgradeHeads.getString(key, "");
                 if (texture != null && !texture.isBlank()) {
                     upgradeHeadTextures.put(key.toLowerCase(), texture.trim());
+                }
+            }
+        }
+
+        controlHeadTextures.clear();
+        ConfigurationSection controlHeads = plugin.getConfig().getConfigurationSection("control-heads");
+        if (controlHeads != null) {
+            for (String key : controlHeads.getKeys(false)) {
+                String texture = controlHeads.getString(key, "");
+                if (texture != null && !texture.isBlank()) {
+                    controlHeadTextures.put(key.toLowerCase(), texture.trim());
                 }
             }
         }
@@ -111,5 +125,10 @@ public final class ConfigManager {
     /** The configured custom-head Base64 texture for a pluggable upgrade (matched case-insensitively by name), if set. */
     public Optional<String> upgradeHeadTexture(String upgradeName) {
         return Optional.ofNullable(upgradeHeadTextures.get(upgradeName.toLowerCase()));
+    }
+
+    /** The configured custom-head Base64 texture for a control-row button ({@code "search"}/{@code "organize"}), if set. */
+    public Optional<String> controlHeadTexture(String buttonName) {
+        return Optional.ofNullable(controlHeadTextures.get(buttonName.toLowerCase()));
     }
 }

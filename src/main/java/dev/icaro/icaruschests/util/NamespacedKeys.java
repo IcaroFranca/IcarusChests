@@ -49,6 +49,12 @@ public final class NamespacedKeys {
     /** Tag on a recipe book navigation button's PDC: {@code "prev"} or {@code "next"}. */
     public static NamespacedKey RECIPE_NAV;
 
+    /** Tag on a chest GUI's control-row Search/Organize button's PDC: {@code "search"} or {@code "organize"}. */
+    public static NamespacedKey CONTROL_BUTTON;
+
+    /** Tag on an organize-menu sort-option item's PDC identifying which {@code SortType} it applies. */
+    public static NamespacedKey SORT_TYPE;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
@@ -60,5 +66,7 @@ public final class NamespacedKeys {
         FILTER_ITEMS = new NamespacedKey(plugin, "filter_items");
         RECIPE_BOOK = new NamespacedKey(plugin, "recipe_book");
         RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
+        CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
+        SORT_TYPE = new NamespacedKey(plugin, "sort_type");
     }
 }

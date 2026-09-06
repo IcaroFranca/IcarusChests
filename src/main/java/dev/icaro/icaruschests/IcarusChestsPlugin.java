@@ -5,11 +5,13 @@ import dev.icaro.icaruschests.chest.ChestDestructionHandler;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
 import dev.icaro.icaruschests.config.ConfigManager;
+import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.gui.RecipeBookRegistry;
 import dev.icaro.icaruschests.listener.ChestBreakListener;
 import dev.icaro.icaruschests.listener.ChestGuiListener;
 import dev.icaro.icaruschests.listener.ChestInteractListener;
+import dev.icaro.icaruschests.listener.ChestOrganizeListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
@@ -56,6 +58,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         NamespacedKeys.init(this);
         configManager = new ConfigManager(this);
         configManager.load();
+        GuiFactory.init(configManager);
 
         if (!openDatabase()) {
             getServer().getPluginManager().disablePlugin(this);
@@ -146,6 +149,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler, chestRepository, this), this);
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager, chestRepository, this), this);
+        pluginManager.registerEvents(new ChestOrganizeListener(chestManager), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
         pluginManager.registerEvents(new FilterConfigListener(), this);
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
