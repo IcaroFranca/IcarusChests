@@ -27,13 +27,37 @@ public final class Migrations {
 
         int version = currentVersion(connection);
         if (version < 1) {
-            applyV1(connection);
-            setVersion(connection, 1);
+            applyVersioned(connection, 1, Migrations::applyV1);
         }
         if (version < 2) {
-            applyV2(connection);
-            setVersion(connection, 2);
+            applyVersioned(connection, 2, Migrations::applyV2);
         }
+    }
+
+    /**
+     * Runs one migration step and its {@code schema_meta} version bump as a single transaction —
+     * SQLite's DDL is fully transactional, so a failure partway through (e.g. an {@code ALTER
+     * TABLE} that can't apply) rolls back the schema change too, instead of leaving {@code
+     * schema_meta} claiming a version whose actual schema change never took effect.
+     */
+    private static void applyVersioned(Connection connection, int version, SqlStep step) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            step.run(connection);
+            setVersion(connection, version);
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    @FunctionalInterface
+    private interface SqlStep {
+        void run(Connection connection) throws SQLException;
     }
 
     private static int currentVersion(Connection connection) throws SQLException {
