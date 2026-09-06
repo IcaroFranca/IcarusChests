@@ -1,9 +1,11 @@
 package dev.icaro.icaruschests.listener;
 
 import dev.icaro.icaruschests.chest.ChestManager;
+import dev.icaro.icaruschests.gui.ControlButton;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.gui.NavAction;
+import dev.icaro.icaruschests.gui.OrganizeMenuGui;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.PersistedUpgrade;
@@ -12,11 +14,16 @@ import dev.icaro.icaruschests.upgrade.UpgradeSlots;
 import dev.icaro.icaruschests.upgrade.UpgradeType;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.block.Sign;
+import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -29,9 +36,11 @@ import org.bukkit.plugin.Plugin;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -77,6 +86,8 @@ public final class ChestGuiListener implements Listener {
     private final ChestManager chestManager;
     private final ChestRepository chestRepository;
     private final Plugin plugin;
+    /** Players with a Search sign currently open, and which chest it should reorder once submitted. */
+    private final Map<UUID, UUID> pendingSearchChestId = new HashMap<>();
 
     public ChestGuiListener(ChestManager chestManager, ChestRepository chestRepository, Plugin plugin) {
         this.chestManager = chestManager;
@@ -122,9 +133,130 @@ public final class ChestGuiListener implements Listener {
             return;
         }
 
-        // The rest of the control row (scroll buttons, indicator, filler) is off-limits either way.
         event.setCancelled(true);
+        Optional<ControlButton> controlButton = GuiFactory.controlButtonAction(event.getCurrentItem());
+        if (controlButton.isPresent()) {
+            handleControlButtonClick(event, chest, controlButton.get());
+            return;
+        }
+
+        // The rest of the control row (scroll buttons, indicator, filler) is off-limits either way.
         handleNavClick(event, holder, chest, topInventory);
+    }
+
+    /** Search opens a sign for the player to type into; Organize opens its own small menu (see {@code ChestOrganizeListener}). */
+    private void handleControlButtonClick(InventoryClickEvent event, IcarusChest chest, ControlButton button) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        switch (button) {
+            case SEARCH -> openSearchSign(player, chest);
+            case ORGANIZE -> {
+                player.closeInventory(); // closing first flushes the chest's own content (see onInventoryClose)
+                player.openInventory(OrganizeMenuGui.open(chest));
+            }
+        }
+    }
+
+    /** How long a Search sign stays "pending" before being forgotten — see {@link #openSearchSign}. */
+    private static final long SEARCH_SIGN_TIMEOUT_TICKS = 20L * 60; // 60 seconds
+
+    /**
+     * Opens a sign editor that was never actually placed anywhere — a detached {@link
+     * org.bukkit.block.data.BlockData#createBlockState() BlockState}, never attached to a real
+     * world location, so nothing here ever touches an actual block. {@link #onSignChange} matches
+     * the submission back to this player (not to wherever the fake sign claims to be) and always
+     * cancels it, so it can never write anything to a real sign even by coincidence.
+     *
+     * <p>Bukkit has no public event for "the player dismissed the sign editor without submitting
+     * it" — only a real submission fires {@link SignChangeEvent} — so a player who opens this and
+     * backs out (Esc) would otherwise stay "pending" forever, and the *next* real sign they ever
+     * edit anywhere would get silently hijacked as a leftover search query. The timeout below
+     * bounds that window instead of leaving it open indefinitely.
+     */
+    private void openSearchSign(Player player, IcarusChest chest) {
+        UUID playerId = player.getUniqueId();
+        UUID chestId = chest.getId();
+        pendingSearchChestId.put(playerId, chestId);
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> pendingSearchChestId.remove(playerId, chestId), SEARCH_SIGN_TIMEOUT_TICKS);
+        player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
+        Sign sign = (Sign) Material.OAK_SIGN.createBlockData().createBlockState();
+        player.openSign(sign, Side.FRONT);
+    }
+
+    @EventHandler
+    public void onSignChange(SignChangeEvent event) {
+        Player player = event.getPlayer();
+        UUID chestId = pendingSearchChestId.remove(player.getUniqueId());
+        if (chestId == null) {
+            return; // an ordinary sign somewhere in the world, not one of ours
+        }
+        event.setCancelled(true); // this sign was never really placed — never let the "edit" apply anywhere
+        Optional<IcarusChest> maybeChest = chestManager.get(chestId);
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+        IcarusChest chest = maybeChest.get();
+        String query = (nullToEmpty(event.getLine(0)) + " " + nullToEmpty(event.getLine(1)) + " "
+                + nullToEmpty(event.getLine(2)) + " " + nullToEmpty(event.getLine(3))).trim();
+        if (!query.isEmpty()) {
+            performSearch(chest, query);
+        }
+        GuiFactory.open(player, chest);
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
+     * Brings every item matching {@code query} to the front of {@code chest.getContents()} — the
+     * *entire* array, including whatever's currently scrolled out of view — preserving each group's
+     * relative order (a stable partition), then reopens the GUI scrolled to the top where they now
+     * are. Does nothing if nothing matches, rather than needlessly shuffling the chest.
+     */
+    private void performSearch(IcarusChest chest, String query) {
+        String queryLower = query.toLowerCase(Locale.ROOT);
+        ItemStack[] contents = chest.getContents();
+        List<ItemStack> matches = new ArrayList<>();
+        List<ItemStack> rest = new ArrayList<>();
+        for (ItemStack item : contents) {
+            if (item == null || item.getType() == Material.AIR) {
+                continue;
+            }
+            (matchesSearch(item, queryLower) ? matches : rest).add(item);
+        }
+        if (matches.isEmpty()) {
+            return;
+        }
+        ItemStack[] reordered = new ItemStack[contents.length];
+        int index = 0;
+        for (ItemStack item : matches) {
+            reordered[index++] = item;
+        }
+        for (ItemStack item : rest) {
+            reordered[index++] = item;
+        }
+        chest.setContents(reordered);
+        chest.setDirty(true);
+    }
+
+    /** Matches against the item's own custom name (if renamed), its pretty material name, and its raw enum name. */
+    private boolean matchesSearch(ItemStack item, String queryLower) {
+        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+            String customName = PlainTextComponentSerializer.plainText()
+                    .serialize(item.getItemMeta().displayName())
+                    .toLowerCase(Locale.ROOT);
+            if (customName.contains(queryLower)) {
+                return true;
+            }
+        }
+        if (UpgradeRegistry.prettyName(item.getType()).toLowerCase(Locale.ROOT).contains(queryLower)) {
+            return true;
+        }
+        String rawName = item.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return rawName.contains(queryLower);
     }
 
     /**
