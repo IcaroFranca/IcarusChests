@@ -15,6 +15,7 @@ import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
 import dev.icaro.icaruschests.listener.RecipeBookListener;
+import dev.icaro.icaruschests.listener.SpecialItemProtectionListener;
 import dev.icaro.icaruschests.listener.UpgradeRecipeValidationListener;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.Database;
@@ -152,6 +153,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new FilterConfigListener(), this);
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
         pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);
+        pluginManager.registerEvents(new SpecialItemProtectionListener(), this);
     }
 
     public ChestManager getChestManager() {
