@@ -181,6 +181,13 @@ public final class ChestGuiListener implements Listener {
     }
 
     private void handleUpgradeSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, int slotIndex) {
+        // Installing/removing an upgrade always ends in a full populate() (below), which redraws
+        // every content slot straight from chest.getContents() — flush the *current* live view into
+        // that array first, or an item the player just picked up from some other content slot a
+        // moment ago (via vanilla's own, uncancelled handling, not yet synced back) would get
+        // silently overwritten by its own stale pre-pickup value and reappear, while the player also
+        // keeps the copy they just picked up: a duplicate.
+        GuiFactory.syncVisibleToChest(chest, holder, event.getView().getTopInventory());
         ItemStack[] upgrades = chest.getUpgrades();
         ItemStack installed = upgrades[slotIndex];
         ItemStack cursor = event.getCursor();
@@ -271,8 +278,18 @@ public final class ChestGuiListener implements Listener {
      * reliably show up: patching the click's own slot through the event was found to be lossy —
      * whatever the live view showed at the next scroll/close, right or stale, is what {@code
      * syncVisibleToChest} would persist, so the two could disagree on what the slot really held.
+     *
+     * <p>For that same reason, every path here that ends in a {@code populate()} redraw first flushes
+     * the *current* live view into {@code chest.getContents()} via {@code syncVisibleToChest} — a
+     * plain, uncancelled pickup from some other content slot a moment earlier (vanilla's own normal
+     * handling; nothing here cancels or syncs it) only updates the live view, not the array, until a
+     * scroll/close does. Skipping that flush before a populate() here would redraw straight from the
+     * array's stale pre-pickup value, making that other item reappear in the chest while the player
+     * also keeps the copy they already picked up — a duplicate.
      */
     private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
+        Inventory topInventory = event.getView().getTopInventory();
+        GuiFactory.syncVisibleToChest(chest, holder, topInventory);
         int globalIndex = holder.getScrollOffset() + event.getSlot();
         ItemStack[] contents = chest.getContents();
         ItemStack slotItem = contents[globalIndex];
@@ -309,7 +326,6 @@ public final class ChestGuiListener implements Listener {
             return;
         }
 
-        Inventory topInventory = event.getView().getTopInventory();
         ItemStack cursor = event.getCursor();
         boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
         boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
@@ -433,6 +449,12 @@ public final class ChestGuiListener implements Listener {
         }
 
         event.setCancelled(true);
+        // This ends in a populate() (below), which redraws every content slot straight from
+        // chest.getContents() — flush the *current* live view into that array first, same reason as
+        // handleContentSlotClick: an item picked up from some other content slot a moment ago via
+        // vanilla's own, uncancelled handling only updated the live view, not the array yet, and a
+        // populate() without this flush would make it reappear in the chest as a duplicate.
+        GuiFactory.syncVisibleToChest(chest, holder, event.getView().getTopInventory());
         ItemStack[] contents = chest.getContents();
         int remaining = shifted.getAmount();
 
