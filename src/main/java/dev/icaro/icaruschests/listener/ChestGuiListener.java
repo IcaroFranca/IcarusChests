@@ -77,11 +77,14 @@ import java.util.stream.Collectors;
  *   <li>a slot holding more than an item's normal max stack (a Stack
  *       upgrade) is never handed to the client at its real amount — see
  *       {@code GuiFactory#populate}/{@code #displayItemFor}, which caps what
- *       the player actually sees at that normal max and spells out the true
- *       count in a lore line instead, since Minecraft's item format won't
- *       let a real stack claim a size above 99 (the {@code
- *       minecraft:max_stack_size} data component, since the 1.20.5 item
- *       rewrite) — {@code chest.getContents()} keeps the real number.</li>
+ *       the player actually sees just below that normal max (one short of
+ *       it, so it never reads as a genuinely full stack — see that
+ *       method's own Javadoc for why Bedrock specifically needs that
+ *       headroom) and spells out the true count in a lore line instead,
+ *       since Minecraft's item format won't let a real stack claim a size
+ *       above 99 (the {@code minecraft:max_stack_size} data component,
+ *       since the 1.20.5 item rewrite) — {@code chest.getContents()} keeps
+ *       the real number.</li>
  * </ul>
  */
 public final class ChestGuiListener implements Listener {

@@ -172,10 +172,23 @@ public final class GuiFactory {
 
     /**
      * The safe, client-facing stand-in for a slot whose true amount (a Stack upgrade) exceeds the
-     * item's own normal max stack — capped at that normal max, with the real count spelled out in a
-     * lore line instead. {@code chest.getContents()} keeps holding the real number; only what gets
-     * handed to the live {@link Inventory} slot is ever capped, so nothing about deposit/withdraw
-     * math (which reads the authoritative array, not this) changes.
+     * item's own normal max stack — capped just *below* that normal max, with the real count
+     * spelled out in a lore line instead. {@code chest.getContents()} keeps holding the real
+     * number; only what gets handed to the live {@link Inventory} slot is ever capped, so nothing
+     * about deposit/withdraw math (which reads the authoritative array, not this) changes.
+     *
+     * <p>Deliberately one short of the real max, not exactly at it: Bedrock (via Geyser) predicts
+     * item-stack merges on the client itself before ever asking the server — a slot already shown
+     * at its item's exact max stack size reads as genuinely full, so a Bedrock client never even
+     * sends the "combine more onto this slot" request in the first place, silently going nowhere
+     * before {@code ChestGuiListener}'s own deposit-beyond-cap logic ever gets a click to
+     * intercept. Java never had this problem since its client always forwards the click
+     * regardless of what it locally expects — leaving one slot of visible headroom costs Java
+     * nothing (the lore line is still what carries the real count) and is what lets Bedrock
+     * actually generate the request that reaches the server, which recomputes the real deposit
+     * amount off the authoritative array either way. Stays at 1 (never 0) for an unstackable
+     * (max stack 1) item pushed over its own limit by a Stack upgrade — there's no way to signal
+     * "not full" on those without the slot appearing empty.
      */
     private static ItemStack displayItemFor(ItemStack authoritative) {
         if (!isOverstacked(authoritative)) {
@@ -183,7 +196,7 @@ public final class GuiFactory {
         }
         int trueAmount = authoritative.getAmount();
         ItemStack display = authoritative.clone();
-        display.setAmount(display.getMaxStackSize());
+        display.setAmount(Math.max(1, display.getMaxStackSize() - 1));
         ItemMeta meta = display.getItemMeta();
         List<Component> lore = new ArrayList<>(meta.hasLore() ? meta.lore() : List.of());
         lore.add(Component.text("Quantidade: " + trueAmount, NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
