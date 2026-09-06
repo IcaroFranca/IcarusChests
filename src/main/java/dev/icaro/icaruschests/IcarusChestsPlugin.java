@@ -22,6 +22,7 @@ import dev.icaro.icaruschests.persistence.Database;
 import dev.icaro.icaruschests.upgrade.TierUpgradeService;
 import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
+import dev.icaro.icaruschests.util.GeyserSkullExport;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.PluginManager;
@@ -59,6 +60,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         configManager = new ConfigManager(this);
         configManager.load();
         GuiFactory.init(configManager);
+        GeyserSkullExport.export(this, configManager);
 
         if (!openDatabase()) {
             getServer().getPluginManager().disablePlugin(this);
@@ -91,6 +93,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     public void reloadPluginConfig() {
         configManager.load();
         rescheduleAutosave();
+        GeyserSkullExport.export(this, configManager);
     }
 
     private void rescheduleAutosave() {

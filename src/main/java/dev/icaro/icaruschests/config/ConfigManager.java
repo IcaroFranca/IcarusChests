@@ -12,8 +12,10 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 
 /**
@@ -130,5 +132,19 @@ public final class ConfigManager {
     /** The configured custom-head Base64 texture for a control-row button ({@code "search"}/{@code "organize"}), if set. */
     public Optional<String> controlHeadTexture(String buttonName) {
         return Optional.ofNullable(controlHeadTextures.get(buttonName.toLowerCase()));
+    }
+
+    /**
+     * Every custom-head Base64 texture currently configured, across kit heads, upgrade heads and
+     * control-row heads — for exporting to third-party integrations (see {@code
+     * dev.icaro.icaruschests.util.GeyserSkullExport}) that need the full set up front rather than
+     * one lookup at a time.
+     */
+    public Set<String> allConfiguredHeadTextures() {
+        Set<String> all = new LinkedHashSet<>();
+        all.addAll(upgradeKitHeadTextures.values());
+        all.addAll(upgradeHeadTextures.values());
+        all.addAll(controlHeadTextures.values());
+        return all;
     }
 }
