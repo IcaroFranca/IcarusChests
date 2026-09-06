@@ -89,8 +89,8 @@ public final class ChestGuiListener implements Listener {
     private final ChestManager chestManager;
     private final ChestRepository chestRepository;
     private final Plugin plugin;
-    /** Players with a Search sign currently open, and which chest it should reorder once submitted. */
-    private final Map<UUID, UUID> pendingSearchChestId = new HashMap<>();
+    /** Players with a Search sign currently open — see {@link #openSearchSign}/{@link PendingSearch}. */
+    private final Map<UUID, PendingSearch> pendingSearches = new HashMap<>();
 
     public ChestGuiListener(ChestManager chestManager, ChestRepository chestRepository, Plugin plugin) {
         this.chestManager = chestManager;
@@ -199,8 +199,15 @@ public final class ChestGuiListener implements Listener {
         chest.setDirty(true);
     }
 
-    /** How long a Search sign stays "pending" before being forgotten — see {@link #openSearchSign}. */
+    /** How long a Search sign stays "pending" before its block is force-reverted — see {@link #openSearchSign}. */
     private static final long SEARCH_SIGN_TIMEOUT_TICKS = 20L * 60; // 60 seconds
+
+    /**
+     * Which chest a Search sign should reorder once submitted, and how to put the real block back
+     * once the player is actually done with it — see {@link #openSearchSign}.
+     */
+    private record PendingSearch(UUID chestId, Block block, BlockData originalData) {
+    }
 
     /**
      * Opens a sign editor for the player to type a search query into.
@@ -211,42 +218,51 @@ public final class ChestGuiListener implements Listener {
      * immediately, silently (visible only in the server console, never to the player), which is
      * exactly why nothing appeared to open at all. There's no way to get a genuine sign editor
      * screen without a really-placed sign block, so this briefly turns the block right under the
-     * player into one, opens it, then puts the original block back one tick later — by then the
-     * "open editor" packet has already gone out and the player's screen is self-contained, so
-     * reverting doesn't disturb it. This is the same trick most "type free text via a sign" plugins
+     * player into one and opens it — this is the same trick most "type free text via a sign" plugins
      * use, since the public API offers no fully virtual alternative.
      *
-     * <p>Bukkit has no public event for "the player dismissed the sign editor without submitting
-     * it" — only a real submission fires {@link SignChangeEvent} — so a player who opens this and
-     * backs out (Esc) would otherwise stay "pending" forever, and the *next* real sign they ever
-     * edit anywhere would get silently hijacked as a leftover search query. The timeout below
-     * bounds that window instead of leaving it open indefinitely.
+     * <p>The real block is put back only once the player is actually done — on submit (see {@link
+     * #onSignChange}) or, failing that, once {@link #SEARCH_SIGN_TIMEOUT_TICKS} elapses — never
+     * sooner: a first attempt reverted it one tick after opening, and the client immediately closed
+     * the editor the moment it saw its own sign change out from under it mid-edit, before the player
+     * could type anything at all. Bukkit has no public event for "the player dismissed the sign
+     * editor without submitting it" — only a real submission fires {@link SignChangeEvent} — so
+     * that timeout is also what keeps a player who backs out (Esc) from leaving the real block
+     * stuck as a sign forever, and from having the *next* real sign they edit anywhere get silently
+     * hijacked as a leftover search query.
      */
     private void openSearchSign(Player player, IcarusChest chest) {
         UUID playerId = player.getUniqueId();
-        UUID chestId = chest.getId();
-        pendingSearchChestId.put(playerId, chestId);
-        Bukkit.getScheduler().runTaskLater(plugin,
-                () -> pendingSearchChestId.remove(playerId, chestId), SEARCH_SIGN_TIMEOUT_TICKS);
         player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
 
         Block block = player.getLocation().getBlock().getRelative(BlockFace.DOWN);
         BlockData originalData = block.getBlockData();
         block.setType(Material.OAK_SIGN, false); // no physics: skip the "needs support" check entirely
         Sign sign = (Sign) block.getState();
+
+        PendingSearch pending = new PendingSearch(chest.getId(), block, originalData);
+        pendingSearches.put(playerId, pending);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            // Only revert if this exact attempt is still the pending one — onSignChange already
+            // reverted and cleared it if the player submitted before the timeout fired.
+            if (pendingSearches.remove(playerId, pending)) {
+                block.setBlockData(originalData, false);
+            }
+        }, SEARCH_SIGN_TIMEOUT_TICKS);
+
         player.openSign(sign, Side.FRONT);
-        Bukkit.getScheduler().runTask(plugin, () -> block.setBlockData(originalData, false));
     }
 
     @EventHandler
     public void onSignChange(SignChangeEvent event) {
         Player player = event.getPlayer();
-        UUID chestId = pendingSearchChestId.remove(player.getUniqueId());
-        if (chestId == null) {
+        PendingSearch pending = pendingSearches.remove(player.getUniqueId());
+        if (pending == null) {
             return; // an ordinary sign somewhere in the world, not one of ours
         }
-        event.setCancelled(true); // this sign was never really placed — never let the "edit" apply anywhere
-        Optional<IcarusChest> maybeChest = chestManager.get(chestId);
+        event.setCancelled(true); // this sign was only ever temporary — never let the edit actually save
+        pending.block().setBlockData(pending.originalData(), false);
+        Optional<IcarusChest> maybeChest = chestManager.get(pending.chestId());
         if (maybeChest.isEmpty()) {
             return;
         }
