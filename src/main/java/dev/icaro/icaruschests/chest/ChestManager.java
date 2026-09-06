@@ -191,12 +191,19 @@ public final class ChestManager {
             return Optional.empty();
         }
 
+        Optional<UUID> chestId = parseUuid(chestIdRaw);
+        if (chestId.isEmpty()) {
+            plugin.getLogger().log(Level.WARNING,
+                    "Bloco em " + ChestLocation.of(block) + " tem CHEST_ID invalido no PDC: \"" + chestIdRaw + "\"; ignorando.");
+            return Optional.empty();
+        }
+
         Optional<ChestTier> tier = ChestTier.byOrdinal(tierOrdinal);
         if (tier.isEmpty()) {
             return Optional.empty();
         }
 
-        IcarusChest chest = new IcarusChest(UUID.fromString(chestIdRaw), ChestLocation.of(block), tier.get());
+        IcarusChest chest = new IcarusChest(chestId.get(), ChestLocation.of(block), tier.get());
         Integer doubledFlag = pdc.get(NamespacedKeys.DOUBLED, PersistentDataType.INTEGER);
         if (doubledFlag != null && doubledFlag == 1) {
             chest.setDoubled(true);
@@ -209,6 +216,15 @@ public final class ChestManager {
         pendingHydration.put(chestId, hydration);
         hydration.whenComplete((ignoredResult, ignoredException) -> pendingHydration.remove(chestId, hydration));
         return Optional.of(chest);
+    }
+
+    /** Tolerates a corrupted/manually-edited {@code CHEST_ID} tag instead of letting {@code UUID.fromString} throw and break the whole event. */
+    private Optional<UUID> parseUuid(String raw) {
+        try {
+            return Optional.of(UUID.fromString(raw));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     private Optional<IcarusChest> resolveLinkTarget(String encodedLocation) {
