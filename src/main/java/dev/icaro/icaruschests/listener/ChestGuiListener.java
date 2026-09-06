@@ -5,7 +5,7 @@ import dev.icaro.icaruschests.gui.ControlButton;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.gui.NavAction;
-import dev.icaro.icaruschests.gui.OrganizeMenuGui;
+import dev.icaro.icaruschests.gui.SortType;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.PersistedUpgrade;
@@ -136,7 +136,7 @@ public final class ChestGuiListener implements Listener {
         event.setCancelled(true);
         Optional<ControlButton> controlButton = GuiFactory.controlButtonAction(event.getCurrentItem());
         if (controlButton.isPresent()) {
-            handleControlButtonClick(event, chest, controlButton.get());
+            handleControlButtonClick(event, holder, chest, controlButton.get());
             return;
         }
 
@@ -144,18 +144,56 @@ public final class ChestGuiListener implements Listener {
         handleNavClick(event, holder, chest, topInventory);
     }
 
-    /** Search opens a sign for the player to type into; Organize opens its own small menu (see {@code ChestOrganizeListener}). */
-    private void handleControlButtonClick(InventoryClickEvent event, IcarusChest chest, ControlButton button) {
+    /**
+     * Search opens a sign for the player to type into. Organize never opens a second screen —
+     * closing one inventory to immediately reopen another from inside that close's own event
+     * handling is a known source of Paper instability (confirmed: it's what actually crashed the
+     * server here) — so a click sorts {@code chest.getContents()} in place, right where the click
+     * happened, and redraws with {@link GuiFactory#populate}, exactly like scrolling or an upgrade
+     * install/removal already do. Each click also advances {@code holder}'s {@link
+     * IcarusChestHolder#getNextSortType()} to the next {@link SortType}, cycling through all three
+     * — see {@code GuiFactory#controlButtonItem} for the lore that names which one is next.
+     */
+    private void handleControlButtonClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, ControlButton button) {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
         switch (button) {
             case SEARCH -> openSearchSign(player, chest);
             case ORGANIZE -> {
-                player.closeInventory(); // closing first flushes the chest's own content (see onInventoryClose)
-                player.openInventory(OrganizeMenuGui.open(chest));
+                Inventory topInventory = event.getView().getTopInventory();
+                GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+                SortType type = GuiFactory.nextSortAndAdvance(holder);
+                sortChest(chest, type);
+                player.sendMessage(Component.text("Baú organizado: ", NamedTextColor.GREEN)
+                        .append(type.displayName().color(NamedTextColor.YELLOW)));
+                GuiFactory.populate(chest, holder, topInventory);
             }
         }
+    }
+
+    /**
+     * Sorts {@code chest.getContents()} — the *entire* array, including whatever's currently
+     * scrolled out of view — under {@code type}, moving every empty slot to the end. Reads straight
+     * off the authoritative array, so a Stack-upgraded slot's true amount (never the display-capped
+     * stand-in {@code GuiFactory} hands the client) is what actually gets compared/ordered.
+     */
+    private void sortChest(IcarusChest chest, SortType type) {
+        ItemStack[] contents = chest.getContents();
+        List<ItemStack> items = new ArrayList<>(contents.length);
+        for (ItemStack item : contents) {
+            if (item != null && item.getType() != Material.AIR) {
+                items.add(item);
+            }
+        }
+        items.sort(type.comparator()); // List.sort is a stable sort: ties keep their original order
+
+        ItemStack[] sorted = new ItemStack[contents.length];
+        for (int i = 0; i < items.size(); i++) {
+            sorted[i] = items.get(i);
+        }
+        chest.setContents(sorted);
+        chest.setDirty(true);
     }
 
     /** How long a Search sign stays "pending" before being forgotten — see {@link #openSearchSign}. */
