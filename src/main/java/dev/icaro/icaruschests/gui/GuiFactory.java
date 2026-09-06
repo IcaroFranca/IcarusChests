@@ -42,7 +42,7 @@ import java.util.OptionalInt;
  * the upgrade-slot columns on either side of the position indicator) are
  * fixed Search and Organize buttons — always present regardless of tier, never
  * upgrade slots. See {@link #controlButtonAction(ItemStack)} and {@code
- * ChestGuiListener}/{@code ChestOrganizeListener} for what clicking them does.
+ * ChestGuiListener#handleControlButtonClick} for what clicking them does.
  */
 public final class GuiFactory {
 
@@ -102,7 +102,7 @@ public final class GuiFactory {
         boolean canScrollDown = scrollable && offset < maxOffset;
 
         for (int column = 0; column < CONTROL_ROW_SIZE; column++) {
-            inventory.setItem(rowStart + column, controlItem(chest, column, canScrollUp, canScrollDown, offset, capacity));
+            inventory.setItem(rowStart + column, controlItem(chest, holder, column, canScrollUp, canScrollDown, offset, capacity));
         }
     }
 
@@ -237,7 +237,8 @@ public final class GuiFactory {
         return guiSize(capacity) - CONTROL_ROW_SIZE;
     }
 
-    private static ItemStack controlItem(IcarusChest chest, int column, boolean canScrollUp, boolean canScrollDown, int offset, int capacity) {
+    private static ItemStack controlItem(IcarusChest chest, IcarusChestHolder holder, int column,
+                                          boolean canScrollUp, boolean canScrollDown, int offset, int capacity) {
         if (column == 0 && canScrollUp) {
             return navItem(Material.ARROW, "▲ Rolar para Cima", "Sobe uma fileira.", NavAction.SCROLL_UP);
         }
@@ -248,10 +249,10 @@ public final class GuiFactory {
             return positionIndicator(offset, capacity);
         }
         if (column == 1) {
-            return controlButtonItem(ControlButton.SEARCH);
+            return controlButtonItem(ControlButton.SEARCH, holder);
         }
         if (column == 7) {
-            return controlButtonItem(ControlButton.ORGANIZE);
+            return controlButtonItem(ControlButton.ORGANIZE, holder);
         }
 
         int upgradeSlot = upgradeColumnIndex(chest.getTier(), column);
@@ -265,18 +266,22 @@ public final class GuiFactory {
     /**
      * Builds one of the two fixed control-row buttons, using its configured custom-head texture
      * (see {@code control-heads} in {@code config.yml}) or a plain vanilla fallback icon if unset —
-     * same pattern as an upgrade's own icon (see {@code UpgradeRegistry#createItem}).
+     * same pattern as an upgrade's own icon (see {@code UpgradeRegistry#createItem}). Organize's lore
+     * names {@code holder}'s {@link IcarusChestHolder#getNextSortType()} so the player knows what a
+     * click will do before doing it — it cycles through {@link SortType} on every click, one sort
+     * per click, never a separate menu (see {@code ChestGuiListener#handleControlButtonClick}).
      */
-    private static ItemStack controlButtonItem(ControlButton button) {
+    private static ItemStack controlButtonItem(ControlButton button, IcarusChestHolder holder) {
         Optional<String> texture = configManager == null ? Optional.empty() : configManager.controlHeadTexture(button.key());
         ItemStack item = texture.isPresent() ? CustomHeads.createHead(texture.get()) : new ItemStack(fallbackMaterial(button));
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text(button == ControlButton.SEARCH ? "🔍 Buscar" : "⚙ Organizar",
                 NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-        meta.lore(List.of(Component.text(button == ControlButton.SEARCH
-                        ? "Digite o nome de um item numa placa."
-                        : "Escolha como reorganizar o baú inteiro.",
-                NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        Component loreLine = button == ControlButton.SEARCH
+                ? Component.text("Digite o nome de um item numa placa.", NamedTextColor.GRAY)
+                : Component.text("Clique para organizar: ", NamedTextColor.GRAY)
+                        .append(holder.getNextSortType().displayName().color(NamedTextColor.YELLOW));
+        meta.lore(List.of(loreLine.decoration(TextDecoration.ITALIC, false)));
         meta.getPersistentDataContainer().set(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING, button.key());
         item.setItemMeta(meta);
         return item;
@@ -299,6 +304,19 @@ public final class GuiFactory {
         }
         String raw = item.getItemMeta().getPersistentDataContainer().get(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
         return ControlButton.fromKey(raw);
+    }
+
+    /**
+     * Returns the {@link SortType} the Organize button is about to apply, advancing {@code holder}
+     * to the next one in the cycle for its following click. {@code holder}'s setter is
+     * package-private (same reasoning as {@link IcarusChestHolder#getScrollOffset()}'s), so this is
+     * the one place outside {@code gui} that's allowed to move it forward.
+     */
+    public static SortType nextSortAndAdvance(IcarusChestHolder holder) {
+        SortType current = holder.getNextSortType();
+        SortType[] cycle = SortType.values();
+        holder.setNextSortType(cycle[(current.ordinal() + 1) % cycle.length]);
+        return current;
     }
 
     private static int upgradeColumnIndex(ChestTier tier, int column) {
