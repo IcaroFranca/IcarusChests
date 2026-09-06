@@ -17,7 +17,10 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.Sign;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -200,11 +203,18 @@ public final class ChestGuiListener implements Listener {
     private static final long SEARCH_SIGN_TIMEOUT_TICKS = 20L * 60; // 60 seconds
 
     /**
-     * Opens a sign editor that was never actually placed anywhere — a detached {@link
-     * org.bukkit.block.data.BlockData#createBlockState() BlockState}, never attached to a real
-     * world location, so nothing here ever touches an actual block. {@link #onSignChange} matches
-     * the submission back to this player (not to wherever the fake sign claims to be) and always
-     * cancels it, so it can never write anything to a real sign even by coincidence.
+     * Opens a sign editor for the player to type a search query into.
+     *
+     * <p>A fully "detached" sign (built via {@code BlockData.createBlockState()}, never tied to a
+     * real world location) was tried first, but Paper's own {@code CraftSign.openSign} unconditionally
+     * requires {@code sign.isPlaced()} — a detached one throws {@code IllegalArgumentException}
+     * immediately, silently (visible only in the server console, never to the player), which is
+     * exactly why nothing appeared to open at all. There's no way to get a genuine sign editor
+     * screen without a really-placed sign block, so this briefly turns the block right under the
+     * player into one, opens it, then puts the original block back one tick later — by then the
+     * "open editor" packet has already gone out and the player's screen is self-contained, so
+     * reverting doesn't disturb it. This is the same trick most "type free text via a sign" plugins
+     * use, since the public API offers no fully virtual alternative.
      *
      * <p>Bukkit has no public event for "the player dismissed the sign editor without submitting
      * it" — only a real submission fires {@link SignChangeEvent} — so a player who opens this and
@@ -219,8 +229,13 @@ public final class ChestGuiListener implements Listener {
         Bukkit.getScheduler().runTaskLater(plugin,
                 () -> pendingSearchChestId.remove(playerId, chestId), SEARCH_SIGN_TIMEOUT_TICKS);
         player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
-        Sign sign = (Sign) Material.OAK_SIGN.createBlockData().createBlockState();
+
+        Block block = player.getLocation().getBlock().getRelative(BlockFace.DOWN);
+        BlockData originalData = block.getBlockData();
+        block.setType(Material.OAK_SIGN, false); // no physics: skip the "needs support" check entirely
+        Sign sign = (Sign) block.getState();
         player.openSign(sign, Side.FRONT);
+        Bukkit.getScheduler().runTask(plugin, () -> block.setBlockData(originalData, false));
     }
 
     @EventHandler
