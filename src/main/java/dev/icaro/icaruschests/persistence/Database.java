@@ -84,6 +84,35 @@ public final class Database {
         }, executor);
     }
 
+    /**
+     * Same as {@link #submit(SqlConsumer)}, but runs {@code work} as a single transaction:
+     * commits only if it completes normally, rolls back the whole thing otherwise. Use this for
+     * any write that touches more than one statement/table where a partial failure would leave
+     * them disagreeing with each other (e.g. deleting old rows before inserting new ones).
+     */
+    public CompletableFuture<Void> submitTransaction(SqlConsumer work) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                connection.setAutoCommit(false);
+                try {
+                    work.accept(connection);
+                    connection.commit();
+                } catch (SQLException e) {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException rollbackFailure) {
+                        e.addSuppressed(rollbackFailure);
+                    }
+                    throw e;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                throw new CompletionException(e);
+            }
+        }, executor);
+    }
+
     /** Closes the connection and shuts down the DB thread, waiting up to {@code timeoutSeconds}. */
     public void close(long timeoutSeconds) {
         executor.execute(() -> {

@@ -52,14 +52,19 @@ public final class ChestInteractListener implements Listener {
             Player player = event.getPlayer();
             ItemStack inHand = player.getInventory().getItemInMainHand();
 
-            if (player.isSneaking() && UpgradeKitRegistry.targetTierOf(inHand).isPresent()) {
-                handleUpgradeAttempt(player, chest, inHand);
-                return;
-            }
+            // Waits for contents/upgrades hydration to finish before touching the chest at all —
+            // a no-op wait except right after a fresh server start (see ChestManager's docs); this
+            // is what stops a same-tick GUI open or kit application from racing that async load.
+            chestManager.whenReady(chest.getId(), () -> {
+                if (player.isSneaking() && UpgradeKitRegistry.targetTierOf(inHand).isPresent()) {
+                    handleUpgradeAttempt(player, chest, inHand);
+                    return;
+                }
 
-            // Always opens scrolled to the top; remembering a player's last
-            // scroll position is a nice-to-have left for later polish.
-            GuiFactory.open(player, chest);
+                // Always opens scrolled to the top; remembering a player's last
+                // scroll position is a nice-to-have left for later polish.
+                GuiFactory.open(player, chest);
+            });
         });
     }
 

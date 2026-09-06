@@ -96,6 +96,59 @@ public final class ChestRepository {
         });
     }
 
+    /**
+     * Atomically persists a tier upgrade: the chest's new tier/doubled state AND its resized
+     * contents, in one transaction — so a failure partway through can never leave the two tables
+     * disagreeing with each other (the chest showing a new tier while its contents blob is still
+     * sized for the old one, or vice versa). Used only by {@code TierUpgradeService}; a plain
+     * tier-independent content save still goes through {@link #saveContents}.
+     */
+    public CompletableFuture<Void> saveTierUpgrade(IcarusChest chest) {
+        String serializedContents = ItemStackSerializer.serialize(chest.getContents());
+        UUID chestId = chest.getId();
+        int slotCount = chest.getContents().length;
+        ChestLocation location = chest.getLocation();
+        int tierOrdinal = chest.getTier().ordinal();
+        boolean doubled = chest.isDoubled();
+        return database.submitTransaction(connection -> {
+            long now = System.currentTimeMillis();
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO chest(id, world_uuid, x, y, z, tier, linked_chest_id, owner_uuid, created_at, updated_at, is_doubled)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        tier = excluded.tier,
+                        updated_at = excluded.updated_at,
+                        is_doubled = excluded.is_doubled
+                    """)) {
+                statement.setString(1, chestId.toString());
+                statement.setString(2, location.worldId().toString());
+                statement.setInt(3, location.x());
+                statement.setInt(4, location.y());
+                statement.setInt(5, location.z());
+                statement.setInt(6, tierOrdinal);
+                statement.setString(7, null);
+                statement.setLong(8, now);
+                statement.setLong(9, now);
+                statement.setInt(10, doubled ? 1 : 0);
+                statement.executeUpdate();
+            }
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO chest_inventory(chest_id, contents_b64, slot_count, saved_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(chest_id) DO UPDATE SET
+                        contents_b64 = excluded.contents_b64,
+                        slot_count = excluded.slot_count,
+                        saved_at = excluded.saved_at
+                    """)) {
+                statement.setString(1, chestId.toString());
+                statement.setString(2, serializedContents);
+                statement.setInt(3, slotCount);
+                statement.setLong(4, now);
+                statement.executeUpdate();
+            }
+        });
+    }
+
     /** Empty when the chest has never been saved (e.g. placed but not yet closed/autosaved). */
     public CompletableFuture<Optional<ItemStack[]>> loadContents(UUID chestId, int expectedSize) {
         return database.submit(connection -> {
@@ -117,9 +170,11 @@ public final class ChestRepository {
      * (slot index → the installed upgrade's {@code name()}; empty slots simply aren't present).
      * Kept type-agnostic (plain strings, not the {@code upgrade} package's own enum) to avoid a
      * persistence→upgrade dependency, since {@code upgrade} already depends on {@code persistence}.
+     * Transactional: the delete-then-insert pair either both apply or neither does, so a failure
+     * partway through can never leave a chest with none of its upgrades persisted.
      */
     public CompletableFuture<Void> saveUpgrades(UUID chestId, Map<Integer, PersistedUpgrade> upgradesBySlot) {
-        return database.submit(connection -> {
+        return database.submitTransaction(connection -> {
             try (PreparedStatement delete = connection.prepareStatement("DELETE FROM chest_upgrade WHERE chest_id = ?")) {
                 delete.setString(1, chestId.toString());
                 delete.executeUpdate();

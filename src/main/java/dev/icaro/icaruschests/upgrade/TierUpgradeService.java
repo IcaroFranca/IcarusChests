@@ -65,12 +65,11 @@ public final class TierUpgradeService {
 
         retag(chest.getLocation().toBlock(), newTier);
 
-        chestRepository.insert(chest).exceptionally(ex -> {
+        // Tier + resized contents go together, in one transaction — see saveTierUpgrade's own
+        // docs for why: a failure partway through a two-write version of this could leave the
+        // chest's row and its contents blob disagreeing about which tier/size is current.
+        chestRepository.saveTierUpgrade(chest).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING, "Falha ao persistir upgrade de tier do bau " + chest.getId(), ex);
-            return null;
-        });
-        chestRepository.saveContents(chest).exceptionally(ex -> {
-            plugin.getLogger().log(Level.WARNING, "Falha ao persistir conteudo pos-upgrade do bau " + chest.getId(), ex);
             return null;
         });
     }
