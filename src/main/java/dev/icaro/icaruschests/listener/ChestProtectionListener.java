@@ -97,9 +97,18 @@ public final class ChestProtectionListener implements Listener {
         if (inventory == null) {
             return false;
         }
-        InventoryHolder holder = inventory.getHolder();
+        return isTaggedChestHolder(inventory.getHolder());
+    }
+
+    /**
+     * {@link DoubleChest#getLeftSide()}/{@code getRightSide()} return the side's
+     * {@link InventoryHolder} directly (each a plain {@link Chest}), not an
+     * {@link Inventory} — so the double-chest recursion has to branch on
+     * holders, not inventories.
+     */
+    private boolean isTaggedChestHolder(InventoryHolder holder) {
         if (holder instanceof DoubleChest doubleChest) {
-            return isTaggedChestInventory(doubleChest.getLeftSide()) || isTaggedChestInventory(doubleChest.getRightSide());
+            return isTaggedChestHolder(doubleChest.getLeftSide()) || isTaggedChestHolder(doubleChest.getRightSide());
         }
         if (holder instanceof Chest chestHolder) {
             return chestManager.isTaggedChest(chestHolder.getBlock());
