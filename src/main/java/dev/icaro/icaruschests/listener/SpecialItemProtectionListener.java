@@ -1,8 +1,6 @@
 package dev.icaro.icaruschests.listener;
 
 import dev.icaro.icaruschests.util.NamespacedKeys;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -27,12 +25,9 @@ public final class SpecialItemProtectionListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (!isProtectedSpecialItem(event.getItemInHand())) {
-            return;
+        if (isProtectedSpecialItem(event.getItemInHand())) {
+            event.setCancelled(true);
         }
-        event.setCancelled(true);
-        event.getPlayer().sendMessage(Component.text(
-                "Esse item não pode ser colocado no chão.", NamedTextColor.RED));
     }
 
     private boolean isProtectedSpecialItem(ItemStack item) {
