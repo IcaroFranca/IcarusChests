@@ -280,13 +280,24 @@ public final class ChestGuiListener implements Listener {
                 && slotItem.getAmount() > slotItem.getMaxStackSize();
 
         ClickType click = event.getClick();
+        if (click == ClickType.SHIFT_LEFT || click == ClickType.SHIFT_RIGHT) {
+            if (overstacked) {
+                // A normal-sized stack shift-transfers fine via vanilla's own logic, but an
+                // overstacked one needs the same "at most one normal stack per interaction" rule as
+                // a plain left-click withdrawal (below) — vanilla's shift-transfer knows nothing
+                // about that and would otherwise try to move the slot's *entire* true amount out in
+                // one go.
+                handleOverstackedShiftWithdraw(event, holder, chest, globalIndex, slotItem);
+            }
+            return;
+        }
         if (click != ClickType.LEFT && click != ClickType.RIGHT) {
             if (overstacked) {
                 // Every other interaction (number-key swap, double-click collect, drop, swap to
                 // offhand, …) assumes a slot's amount never exceeds its normal max stack — letting
                 // one through here risks the client's own idea of this slot and the authoritative
                 // array disagreeing about what a Stack-upgraded stack really holds. Left/right-click
-                // (below) are the only supported way to touch one.
+                // and shift-click (both above) are the only supported ways to touch one.
                 event.setCancelled(true);
             }
             return; // Filter/Stack cover left/right clicks and shift-clicks (see handleShiftDeposit); drag is handled separately
@@ -362,6 +373,33 @@ public final class ChestGuiListener implements Listener {
             chest.setDirty(true);
             GuiFactory.populate(chest, holder, topInventory);
         }
+    }
+
+    /**
+     * Withdraws at most one normal stack from an overstacked slot straight into the player's own
+     * inventory — the same cap a plain left-click withdrawal enforces, just handed to the
+     * inventory instead of the cursor, since shift-click has no cursor to give it to. If the
+     * inventory has no room at all, nothing is taken; if it only partially fits, only what actually
+     * landed is removed from the chest, so nothing is ever lost to a full inventory.
+     */
+    private void handleOverstackedShiftWithdraw(InventoryClickEvent event, IcarusChestHolder holder,
+                                                 IcarusChest chest, int globalIndex, ItemStack slotItem) {
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        int taking = Math.min(slotItem.getMaxStackSize(), slotItem.getAmount());
+        Map<Integer, ItemStack> notAdded = player.getInventory().addItem(withAmount(slotItem, taking));
+        int leftoverAmount = notAdded.values().stream().mapToInt(ItemStack::getAmount).sum();
+        int actuallyMoved = taking - leftoverAmount;
+        if (actuallyMoved <= 0) {
+            return; // inventory is completely full: nothing changes
+        }
+        ItemStack[] contents = chest.getContents();
+        int remaining = slotItem.getAmount() - actuallyMoved;
+        contents[globalIndex] = remaining > 0 ? withAmount(slotItem, remaining) : null;
+        chest.setDirty(true);
+        GuiFactory.populate(chest, holder, event.getView().getTopInventory());
     }
 
     /**
