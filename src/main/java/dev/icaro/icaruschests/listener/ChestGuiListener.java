@@ -53,9 +53,20 @@ import java.util.stream.Collectors;
  *       upgrade lets an existing stack keep growing past the item's normal
  *       limit, up to that tier's multiplier (see {@code UpgradeType}) — both
  *       cover left/right clicks and shift-clicks from the player's own
- *       inventory, and dragging is at least blocked by the Filter; a
- *       number-key hotbar swap onto a content slot is the one known gap
- *       left in this version.</li>
+ *       inventory, and dragging is at least blocked by the Filter; any
+ *       interaction other than left/right-click (number-key swap,
+ *       double-click collect, drop, swap to offhand, …) is refused outright
+ *       on a slot whose true amount already exceeds its normal max stack, so
+ *       none of them can desync the client's view of it from what the chest
+ *       actually holds (see {@link #handleContentSlotClick}).</li>
+ *   <li>a slot holding more than an item's normal max stack (a Stack
+ *       upgrade) is never handed to the client at its real amount — see
+ *       {@code GuiFactory#populate}/{@code #displayItemFor}, which caps what
+ *       the player actually sees at that normal max and spells out the true
+ *       count in a lore line instead, since Minecraft's item format won't
+ *       let a real stack claim a size above 99 (the {@code
+ *       minecraft:max_stack_size} data component, since the 1.20.5 item
+ *       rewrite) — {@code chest.getContents()} keeps the real number.</li>
  * </ul>
  */
 public final class ChestGuiListener implements Listener {
@@ -259,8 +270,22 @@ public final class ChestGuiListener implements Listener {
      * syncVisibleToChest} would persist, so the two could disagree on what the slot really held.
      */
     private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
+        int globalIndex = holder.getScrollOffset() + event.getSlot();
+        ItemStack[] contents = chest.getContents();
+        ItemStack slotItem = contents[globalIndex];
+        boolean overstacked = slotItem != null && slotItem.getType() != Material.AIR
+                && slotItem.getAmount() > slotItem.getMaxStackSize();
+
         ClickType click = event.getClick();
         if (click != ClickType.LEFT && click != ClickType.RIGHT) {
+            if (overstacked) {
+                // Every other interaction (number-key swap, double-click collect, drop, swap to
+                // offhand, …) assumes a slot's amount never exceeds its normal max stack — letting
+                // one through here risks the client's own idea of this slot and the authoritative
+                // array disagreeing about what a Stack-upgraded stack really holds. Left/right-click
+                // (below) are the only supported way to touch one.
+                event.setCancelled(true);
+            }
             return; // Filter/Stack cover left/right clicks and shift-clicks (see handleShiftDeposit); drag is handled separately
         }
         double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
@@ -271,14 +296,11 @@ public final class ChestGuiListener implements Listener {
         }
 
         Inventory topInventory = event.getView().getTopInventory();
-        int globalIndex = holder.getScrollOffset() + event.getSlot();
-        ItemStack[] contents = chest.getContents();
-        ItemStack slotItem = contents[globalIndex];
         ItemStack cursor = event.getCursor();
         boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
         boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
 
-        if (stackUpgraded && cursorEmpty && !slotEmpty && slotItem.getAmount() > slotItem.getMaxStackSize()) {
+        if (stackUpgraded && cursorEmpty && !slotEmpty && overstacked) {
             // Withdraw at most a normal stack at a time, leaving the rest — same as the mod this
             // plugin is inspired by. Right-click's own "take half" still can't exceed that either.
             event.setCancelled(true);

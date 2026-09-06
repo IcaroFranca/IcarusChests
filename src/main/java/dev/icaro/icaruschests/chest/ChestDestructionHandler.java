@@ -20,6 +20,12 @@ import java.util.logging.Level;
  * SQLite, and evicts it from {@link ChestManager}. The chest block itself
  * still drops normally via vanilla's own break/explosion handling; nothing
  * here needs to touch that.
+ *
+ * <p>A slot grown past its item's normal max stack by a Stack upgrade is
+ * split back into normal-sized dropped stacks (see {@link
+ * #dropNormalized}) — a dropped item is a real, world-saved entity, unlike
+ * the chest's own custom GUI inventory, and Minecraft doesn't support one
+ * above the vanilla max.
  */
 public final class ChestDestructionHandler {
 
@@ -40,7 +46,7 @@ public final class ChestDestructionHandler {
     public void destroy(IcarusChest chest, Block dropAt) {
         for (ItemStack item : chest.getContents()) {
             if (item != null && item.getType() != Material.AIR) {
-                dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), item);
+                dropNormalized(dropAt, item);
             }
         }
         for (ItemStack upgrade : chest.getUpgrades()) {
@@ -56,5 +62,25 @@ public final class ChestDestructionHandler {
             return null;
         });
         chestManager.unregister(chest.getLocation());
+    }
+
+    /**
+     * A Stack upgrade lets a chest slot hold more than an item's normal max stack — but a dropped
+     * item is a real, world-saved entity, and Minecraft's item format won't let a real stack claim
+     * a size above 99 (the {@code minecraft:max_stack_size} data component, since the 1.20.5 item
+     * rewrite; see also <a href="https://github.com/PaperMC/Paper/issues/11161">Paper#11161</a> on
+     * the save corruption an out-of-range amount can cause). Splitting into normal-sized stacks
+     * keeps every dropped entity within what the game actually supports.
+     */
+    private void dropNormalized(Block dropAt, ItemStack item) {
+        int remaining = item.getAmount();
+        int normalMax = item.getMaxStackSize();
+        while (remaining > 0) {
+            int chunk = Math.min(remaining, normalMax);
+            ItemStack piece = item.clone();
+            piece.setAmount(chunk);
+            dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), piece);
+            remaining -= chunk;
+        }
     }
 }
