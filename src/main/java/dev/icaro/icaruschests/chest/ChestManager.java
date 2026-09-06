@@ -211,10 +211,10 @@ public final class ChestManager {
             chest.setContents(new ItemStack[chest.effectiveTotalCapacity()]);
         }
         register(chest);
-        UUID chestId = chest.getId();
+        UUID registeredId = chest.getId();
         CompletableFuture<Void> hydration = CompletableFuture.allOf(hydrateContentsAsync(chest), hydrateUpgradesAsync(chest));
-        pendingHydration.put(chestId, hydration);
-        hydration.whenComplete((ignoredResult, ignoredException) -> pendingHydration.remove(chestId, hydration));
+        pendingHydration.put(registeredId, hydration);
+        hydration.whenComplete((ignoredResult, ignoredException) -> pendingHydration.remove(registeredId, hydration));
         return Optional.of(chest);
     }
 
