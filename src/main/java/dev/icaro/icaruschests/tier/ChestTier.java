@@ -27,8 +27,13 @@ public enum ChestTier {
     DIAMOND("Diamante", 108, TextColor.color(0x4A, 0xED, 0xD9), Material.DIAMOND, 8, 3),
     NETHERITE("Netherite", 135, TextColor.color(0x6E, 0x5A, 0x61), Material.NETHERITE_INGOT, 4, 4);
 
-    /** How many of {@link #upgradeSlotCount()}'s reserved columns actually exist in the control row — see {@code GuiFactory}. */
-    public static final int MAX_UPGRADE_SLOTS = 6;
+    /**
+     * How many of {@link #upgradeSlotCount()}'s reserved columns actually exist in the control row
+     * — see {@code GuiFactory}. Capped at 4 (not the row's full 6 non-fixed columns) because two of
+     * those columns are permanently reserved for the Search and Organize buttons, one on each side
+     * of the position indicator, flanking the upgrade-slot columns symmetrically.
+     */
+    public static final int MAX_UPGRADE_SLOTS = 4;
 
     private final String displayName;
     private final int totalCapacity;

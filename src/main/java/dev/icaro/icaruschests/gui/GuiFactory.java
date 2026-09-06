@@ -1,7 +1,9 @@
 package dev.icaro.icaruschests.gui;
 
+import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.util.CustomHeads;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -35,15 +37,28 @@ import java.util.OptionalInt;
  * place, it never closes/reopens the view. A small chest (Normal, Copper,
  * single Iron) just gets a plain window sized to exactly {@code capacity + 9},
  * no scrolling machinery at all.
+ *
+ * <p>The control row's remaining two columns (1 and 7, immediately flanking
+ * the upgrade-slot columns on either side of the position indicator) are
+ * fixed Search and Organize buttons — always present regardless of tier, never
+ * upgrade slots. See {@link #controlButtonAction(ItemStack)} and {@code
+ * ChestGuiListener}/{@code ChestOrganizeListener} for what clicking them does.
  */
 public final class GuiFactory {
 
     private static final int CONTENT_WINDOW = 45;
     private static final int CONTROL_ROW_SIZE = 9;
-    /** Control-row columns available for upgrade slots — 0, 4 and 8 are reserved for scroll/indicator. */
-    private static final int[] UPGRADE_SLOT_COLUMNS = {1, 2, 3, 5, 6, 7};
+    /** Control-row columns available for upgrade slots — 0, 1, 4, 7 and 8 are reserved for scroll/search/indicator/organize. */
+    private static final int[] UPGRADE_SLOT_COLUMNS = {2, 3, 5, 6};
+
+    private static ConfigManager configManager;
 
     private GuiFactory() {
+    }
+
+    /** Must be called once during {@code onEnable}, before any GUI is built, so the Search/Organize buttons can read their configured head textures. */
+    public static void init(ConfigManager configManager) {
+        GuiFactory.configManager = configManager;
     }
 
     /** Builds the GUI (starting scrolled to the top) and opens it for {@code player}. */
@@ -232,6 +247,12 @@ public final class GuiFactory {
         if (column == 4) {
             return positionIndicator(offset, capacity);
         }
+        if (column == 1) {
+            return controlButtonItem(ControlButton.SEARCH);
+        }
+        if (column == 7) {
+            return controlButtonItem(ControlButton.ORGANIZE);
+        }
 
         int upgradeSlot = upgradeColumnIndex(chest.getTier(), column);
         if (upgradeSlot >= 0) {
@@ -239,6 +260,45 @@ public final class GuiFactory {
             return installed != null ? installed : emptyUpgradeSlot();
         }
         return filler();
+    }
+
+    /**
+     * Builds one of the two fixed control-row buttons, using its configured custom-head texture
+     * (see {@code control-heads} in {@code config.yml}) or a plain vanilla fallback icon if unset —
+     * same pattern as an upgrade's own icon (see {@code UpgradeRegistry#createItem}).
+     */
+    private static ItemStack controlButtonItem(ControlButton button) {
+        Optional<String> texture = configManager == null ? Optional.empty() : configManager.controlHeadTexture(button.key());
+        ItemStack item = texture.isPresent() ? CustomHeads.createHead(texture.get()) : new ItemStack(fallbackMaterial(button));
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(button == ControlButton.SEARCH ? "🔍 Buscar" : "⚙ Organizar",
+                NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text(button == ControlButton.SEARCH
+                        ? "Digite o nome de um item numa placa."
+                        : "Escolha como reorganizar o baú inteiro.",
+                NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        meta.getPersistentDataContainer().set(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING, button.key());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static Material fallbackMaterial(ControlButton button) {
+        return button == ControlButton.SEARCH ? Material.SPYGLASS : Material.HOPPER;
+    }
+
+    public static boolean isControlButton(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) {
+            return false;
+        }
+        return item.getItemMeta().getPersistentDataContainer().has(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
+    }
+
+    public static Optional<ControlButton> controlButtonAction(ItemStack item) {
+        if (!isControlButton(item)) {
+            return Optional.empty();
+        }
+        String raw = item.getItemMeta().getPersistentDataContainer().get(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
+        return ControlButton.fromKey(raw);
     }
 
     private static int upgradeColumnIndex(ChestTier tier, int column) {
