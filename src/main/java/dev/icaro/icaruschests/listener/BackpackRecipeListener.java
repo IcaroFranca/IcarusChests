@@ -240,8 +240,9 @@ public final class BackpackRecipeListener implements Listener {
         if (backpackItem == null || chosenColor == null || backpackItem.getType() == Material.PLAYER_HEAD) {
             return Optional.empty();
         }
+        ItemStack toRecolor = backpackItem;
         return bundleMaterialFor(chosenColor).map(material -> {
-            ItemStack recolored = backpackItem.clone();
+            ItemStack recolored = toRecolor.clone();
             recolored.setType(material); // BundleMeta carries over unchanged across every bundle color — id/tier/preview all survive
             return recolored;
         });
