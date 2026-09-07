@@ -304,6 +304,10 @@ public final class ChestGuiListener implements Listener {
                 + nullToEmpty(event.getLine(2)) + " " + nullToEmpty(event.getLine(3))).trim();
         if (!query.isEmpty()) {
             performSearch(chest, query);
+            // The player's own session already closed (openSearchSign) and unregistered itself
+            // before this ever ran — nothing to exclude, just push the reorder to whoever else has
+            // this chest open right now.
+            GuiFactory.refreshOtherSessions(chest, null);
         }
         GuiFactory.open(player, chest);
     }
@@ -783,11 +787,59 @@ public final class ChestGuiListener implements Listener {
         if (!(event.getInventory().getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
+        GuiFactory.closeSession(holder.getChestId(), holder);
         resolveContainer(holder.getChestId()).ifPresent(chest -> {
             GuiFactory.syncVisibleToChest(chest, holder, event.getInventory());
+            GuiFactory.refreshOtherSessions(chest, holder);
             if (chest instanceof IcarusBackpack backpack && event.getPlayer() instanceof Player player) {
                 refreshBackpackPreview(player, backpack);
             }
+        });
+    }
+
+    /**
+     * Fires after every click on an IcarusChests GUI has been fully resolved — vanilla's own
+     * default handling included, for a plain uncancelled pickup/place (see {@link
+     * #handleContentSlotClick}'s own javadoc for why those are deliberately left uncancelled and
+     * never synced by the handlers above) — and flushes the result to every *other* player
+     * currently viewing the same chest or backpack. Never repaints the acting player's own view:
+     * vanilla (or one of the handlers above) already left it correct, and redrawing it again here
+     * would risk visually stomping a click that's still mid-flight client-side. See {@link
+     * GuiFactory#refreshOtherSessions} for why this can't loop back into another click event.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryClickSync(InventoryClickEvent event) {
+        Inventory topInventory = event.getView().getTopInventory();
+        if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        if (event.getClickedInventory() != topInventory
+                && event.getClick() != ClickType.SHIFT_LEFT && event.getClick() != ClickType.SHIFT_RIGHT) {
+            return; // a plain click reordering the player's own inventory below never touches the chest
+        }
+        resolveContainer(holder.getChestId()).ifPresent(chest -> {
+            GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+            GuiFactory.refreshOtherSessions(chest, holder);
+        });
+    }
+
+    /** Same idea as {@link #onInventoryClickSync}, for a drag that actually reached the chest's own slots. */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryDragSync(InventoryDragEvent event) {
+        if (event.isCancelled()) {
+            return; // a cancelled drag never actually moved anything
+        }
+        Inventory topInventory = event.getView().getTopInventory();
+        if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        boolean touchesContent = event.getRawSlots().stream().anyMatch(rawSlot -> rawSlot < topInventory.getSize());
+        if (!touchesContent) {
+            return; // dragged entirely within the player's own inventory below
+        }
+        resolveContainer(holder.getChestId()).ifPresent(chest -> {
+            GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+            GuiFactory.refreshOtherSessions(chest, holder);
         });
     }
 

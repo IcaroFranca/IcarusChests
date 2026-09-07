@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'dev.icaro.icaruschests'
-version = '2.4.0'
+version = '2.4.1'
 description = 'IcarusChests - tiered storage chests for Paper servers, inspired by Sophisticated Storage.'
 
 java {
