@@ -104,7 +104,7 @@ class MigrationsTest {
                 VALUES (?, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, 0, 0, 'BACKPACK')
                 """)) {
             insert.setString(1, backpackId.toString());
-            assertDoesNotThrow(insert::executeUpdate, "a locationless backpack row must be insertable after the V3 rebuild");
+            assertDoesNotThrow(() -> { insert.executeUpdate(); }, "a locationless backpack row must be insertable after the V3 rebuild");
         }
 
         // chest_inventory/chest_upgrade still reference chest(id) correctly after the table swap —
@@ -112,7 +112,7 @@ class MigrationsTest {
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO chest_inventory(chest_id, contents_b64, slot_count, saved_at) VALUES (?, '', 27, 0)")) {
             insert.setString(1, existingChestId.toString());
-            assertDoesNotThrow(insert::executeUpdate, "chest_inventory's FK to chest(id) must still resolve after the rename");
+            assertDoesNotThrow(() -> { insert.executeUpdate(); }, "chest_inventory's FK to chest(id) must still resolve after the rename");
         }
     }
 
