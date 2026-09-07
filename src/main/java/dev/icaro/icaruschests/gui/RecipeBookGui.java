@@ -60,7 +60,14 @@ public final class RecipeBookGui {
 
     private static ChestGui build(RecipeBookRegistry registry, int page) {
         List<RecipeBookEntry> entries = registry.buildAll();
-        ChestGui gui = new ChestGui(ROWS, ComponentHolder.of(title(entries.size())), plugin);
+        // The trailing {} is load-bearing, not stray: IF 0.12.1's Gui constructor unconditionally
+        // reflects over this.getClass().getDeclaredMethods() looking for @TopClick/@BottomClick/etc.
+        // annotations, and for every declared method with zero parameters it reads
+        // getParameterTypes()[0] without checking parameterCount first — an ArrayIndexOutOfBoundsException
+        // on ChestGui's own no-arg methods (update(), getRows(), isDirtyRows()...) if instantiated
+        // directly. An anonymous subclass has no declared methods of its own, so the reflective scan
+        // finds nothing and the bug never triggers.
+        ChestGui gui = new ChestGui(ROWS, ComponentHolder.of(title(entries.size())), plugin) {};
         gui.setOnGlobalClick(event -> event.setCancelled(true)); // read-only: nothing here can be taken, placed or moved
 
         StaticPane pane = new StaticPane(9, ROWS);
