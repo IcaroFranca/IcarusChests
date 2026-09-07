@@ -18,8 +18,12 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Builds and refreshes the scrollable GUI representing a {@code StorageContainer} — a placed
@@ -56,6 +60,18 @@ public final class GuiFactory {
 
     private static ConfigManager configManager;
 
+    /**
+     * Every currently open {@link IcarusChestHolder} session per container id — a placed chest or
+     * backpack can be viewed by more than one player at once, and each {@link #open}/{@link #build}
+     * call creates its own independent {@link Inventory}/holder pair (see {@link IcarusChestHolder}'s
+     * own javadoc), so nothing else tracks who else is looking at the same one. {@code
+     * ChestGuiListener} registers/unregisters sessions here and calls {@link #refreshOtherSessions}
+     * after every action that changes {@code chest.getContents()}/{@code getUpgrades()}, so two
+     * players sharing a chest actually see each other's edits instead of silently clobbering them
+     * (last one to close overwriting whatever the other hadn't synced yet).
+     */
+    private static final Map<UUID, Set<IcarusChestHolder>> OPEN_SESSIONS = new ConcurrentHashMap<>();
+
     private GuiFactory() {
     }
 
@@ -78,8 +94,49 @@ public final class GuiFactory {
         holder.setInventory(inventory);
         holder.setScrollOffset(scrollOffset);
 
+        OPEN_SESSIONS.computeIfAbsent(chest.getId(), id -> ConcurrentHashMap.newKeySet()).add(holder);
         populate(chest, holder, inventory);
         return inventory;
+    }
+
+    /** Unregisters a closed session — must be called once per {@link #build} call, from {@code onInventoryClose}. */
+    public static void closeSession(UUID chestId, IcarusChestHolder holder) {
+        Set<IcarusChestHolder> sessions = OPEN_SESSIONS.get(chestId);
+        if (sessions == null) {
+            return;
+        }
+        sessions.remove(holder);
+        OPEN_SESSIONS.remove(chestId, sessions.isEmpty() ? sessions : null);
+    }
+
+    /**
+     * Redraws every other currently open session viewing the same {@code chest}, from its
+     * now-current {@code getContents()}/{@code getUpgrades()} — never {@code excluding} (the
+     * player who just made the change; their own view is already correct, and repainting it again
+     * would risk visually stomping a click still mid-flight client-side), and never a session
+     * whose inventory has no viewers left (closed but not yet unregistered — pruned here instead
+     * of chased down, since it's about to be removed by {@code closeSession} anyway).
+     *
+     * <p>Loop-safe by construction: {@link #populate}/{@link #syncVisibleToChest} only ever call
+     * {@code Inventory#setItem} or read/write plain fields — neither fires a Bukkit event, so
+     * redrawing another player's inventory here can never itself trigger a new
+     * InventoryClickEvent/InventoryDragEvent that would re-enter this method.
+     */
+    public static void refreshOtherSessions(StorageContainer chest, IcarusChestHolder excluding) {
+        Set<IcarusChestHolder> sessions = OPEN_SESSIONS.get(chest.getId());
+        if (sessions == null) {
+            return;
+        }
+        for (IcarusChestHolder other : sessions) {
+            if (other == excluding) {
+                continue;
+            }
+            Inventory otherInventory = other.getInventory();
+            if (otherInventory.getViewers().isEmpty()) {
+                continue;
+            }
+            populate(chest, other, otherInventory);
+        }
     }
 
     /**
