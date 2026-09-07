@@ -9,9 +9,11 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,6 +57,48 @@ public final class BackpackRegistry {
         meta.getPersistentDataContainer().set(NamespacedKeys.BACKPACK_TIER, PersistentDataType.INTEGER, tier.ordinal());
         item.setItemMeta(meta);
         return item;
+    }
+
+    /** How many distinct stacks show up in the bundle-shaped tooltip preview — see {@link #refreshPreview}. */
+    private static final int PREVIEW_LIMIT = 12;
+
+    /**
+     * Mirrors a snapshot of {@code contents} into {@code item}'s own {@link BundleMeta} so a
+     * vanilla client's tooltip shows a real preview mosaic (and the weight/fullness bar) instead of
+     * always reading "Empty" — the true contents live in SQLite, keyed by {@code BACKPACK_ID}, never
+     * in the item's own {@code minecraft:bundle_contents} component, so without this the physical
+     * item would never reflect what's actually inside. Purely cosmetic: this preview is never read
+     * back as real data (vanilla's own weight-limited "insert into bundle" mechanic is irrelevant
+     * here too, since every click on this item is intercepted before it ever reaches that — see
+     * {@code BackpackInteractListener}), so it's capped at {@value #PREVIEW_LIMIT} distinct stacks
+     * and each one's amount is capped at its own normal max stack (same reasoning as {@code
+     * GuiFactory#displayItemFor} — a live client-facing item is never expected to claim more).
+     *
+     * <p>Does nothing if {@code item} isn't bundle-shaped (a custom-head-textured backpack uses
+     * {@code SkullMeta}, which has no tooltip preview mechanism to hook into at all).
+     */
+    public void refreshPreview(ItemStack item, ItemStack[] contents) {
+        if (!(item.getItemMeta() instanceof BundleMeta bundleMeta)) {
+            return;
+        }
+        List<ItemStack> preview = new ArrayList<>();
+        for (ItemStack stored : contents) {
+            if (stored == null || stored.getType() == Material.AIR) {
+                continue;
+            }
+            preview.add(stored.getAmount() > stored.getMaxStackSize() ? cappedCopy(stored) : stored);
+            if (preview.size() >= PREVIEW_LIMIT) {
+                break;
+            }
+        }
+        bundleMeta.setItems(preview);
+        item.setItemMeta(bundleMeta);
+    }
+
+    private static ItemStack cappedCopy(ItemStack item) {
+        ItemStack copy = item.clone();
+        copy.setAmount(item.getMaxStackSize());
+        return copy;
     }
 
     /** The {@code BackpackTier} an item is at, if it's a backpack at all. */

@@ -63,6 +63,7 @@ public final class RecipeBookRegistry {
         for (BackpackTier tier : BackpackTier.values()) {
             tier.upgradeMaterial().ifPresent(material -> entries.add(backpackTierUpEntry(tier, material)));
         }
+        entries.add(backpackRecolorEntry());
         return entries;
     }
 
@@ -99,6 +100,29 @@ public final class RecipeBookRegistry {
         Map<Integer, ItemStack> grid = shapedGrid(previousSample, new ItemStack(ore));
         Component title = Component.text("Mochila: " + tier.displayName(), NamedTextColor.LIGHT_PURPLE);
         return new RecipeBookEntry(title, grid, backpackRegistry.createBackpack(tier, UUID.randomUUID()));
+    }
+
+    /**
+     * A backpack + any single dye → the same backpack recolored (see {@code
+     * BackpackRecipeListener}'s shapeless recolor recipe) — shown with red as the representative
+     * example since the recipe book has no way to illustrate "any of 16 colors" at once. Only
+     * cosmetic on a plain Bundle-based backpack; falls back to a plain icon in the result slot if
+     * this server's Bukkit API predates colored bundles (same reasoning as {@code
+     * BackpackRecipeListener#bundleMaterialFor}).
+     */
+    private RecipeBookEntry backpackRecolorEntry() {
+        ItemStack sample = backpackRegistry.createBackpack(BackpackTier.LEATHER, UUID.randomUUID());
+        Map<Integer, ItemStack> grid = new LinkedHashMap<>();
+        grid.put(0, sample);
+        grid.put(1, new ItemStack(Material.RED_DYE));
+        ItemStack result = sample.clone();
+        try {
+            result.setType(Material.valueOf("RED_BUNDLE"));
+        } catch (IllegalArgumentException ignored) {
+            // predates colored bundles: the plain backpack icon in the result slot still communicates the recipe
+        }
+        Component title = Component.text("Mochila: Colorir (qualquer corante)", NamedTextColor.LIGHT_PURPLE);
+        return new RecipeBookEntry(title, grid, result);
     }
 
     /** The "MMM"/"MCM"/"MMM" shape every tier kit and every backpack recipe shares: {@code center} surrounded by 8 {@code surrounding}. */

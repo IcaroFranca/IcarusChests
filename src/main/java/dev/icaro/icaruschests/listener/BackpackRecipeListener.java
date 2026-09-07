@@ -5,6 +5,7 @@ import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.model.IcarusBackpack;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.tier.BackpackTier;
+import org.bukkit.DyeColor;
 import org.bukkit.Keyed;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -13,12 +14,15 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Recipe;
 import org.bukkit.inventory.RecipeChoice;
 import org.bukkit.inventory.ShapedRecipe;
+import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.plugin.Plugin;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -45,6 +49,7 @@ import java.util.logging.Level;
 public final class BackpackRecipeListener implements Listener {
 
     private static final String BASE_RECIPE_KEY = "backpack_leather";
+    private static final String RECOLOR_RECIPE_KEY = "backpack_recolor";
 
     private final Plugin plugin;
     private final BackpackRegistry backpackRegistry;
@@ -75,6 +80,61 @@ public final class BackpackRecipeListener implements Listener {
                 }
             });
         }
+        try {
+            registerRecolorRecipe();
+        } catch (RuntimeException e) {
+            plugin.getLogger().log(Level.WARNING, "Falha ao registrar a receita de colorir a mochila", e);
+        }
+    }
+
+    /**
+     * A backpack + any single dye → the same backpack, recolored — deliberately our own recipe
+     * rather than relying on vanilla's own bundle-recoloring (unconfirmed whether/how it behaves
+     * on the server versions this plugin targets, and what it would do to {@code BACKPACK_ID}/
+     * {@code BACKPACK_TIER} if it rebuilt the item's meta from scratch): this way the exact
+     * behavior — same id, same tier, same bundle-content preview, only the {@link Material}
+     * itself changes — is fully ours to guarantee. {@code Material.valueOf} (not a direct enum
+     * constant) for every colored bundle variant, since those are a newer addition than this
+     * plugin's minimum Paper API target — a server whose Bukkit build predates them just never
+     * registers that color, rather than failing to compile against it at all.
+     */
+    private void registerRecolorRecipe() {
+        List<Material> backpackMaterials = new ArrayList<>();
+        backpackMaterials.add(Material.BUNDLE);
+        backpackMaterials.add(Material.PLAYER_HEAD);
+        List<Material> dyeMaterials = new ArrayList<>();
+        for (DyeColor color : DyeColor.values()) {
+            bundleMaterialFor(color).ifPresent(backpackMaterials::add);
+            dyeMaterials.add(dyeMaterialFor(color));
+        }
+        NamespacedKey key = new NamespacedKey(plugin, RECOLOR_RECIPE_KEY);
+        ShapelessRecipe recipe = new ShapelessRecipe(key, placeholderResult(BackpackTier.LEATHER));
+        recipe.addIngredient(new RecipeChoice.MaterialChoice(backpackMaterials));
+        recipe.addIngredient(new RecipeChoice.MaterialChoice(dyeMaterials));
+        plugin.getServer().addRecipe(recipe);
+    }
+
+    /** The colored bundle variant for {@code color}, if this server's Bukkit API declares one (added after this plugin's minimum target version). */
+    private Optional<Material> bundleMaterialFor(DyeColor color) {
+        try {
+            return Optional.of(Material.valueOf(color.name() + "_BUNDLE"));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Dye materials have existed since long before colored bundles, so unlike {@link #bundleMaterialFor} this never needs to be optional. */
+    private Material dyeMaterialFor(DyeColor color) {
+        return Material.valueOf(color.name() + "_DYE");
+    }
+
+    private Optional<DyeColor> dyeColorOf(Material material) {
+        for (DyeColor color : DyeColor.values()) {
+            if (dyeMaterialFor(color) == material) {
+                return Optional.of(color);
+            }
+        }
+        return Optional.empty();
     }
 
     private void registerBaseRecipe() {
@@ -126,6 +186,11 @@ public final class BackpackRecipeListener implements Listener {
             return;
         }
 
+        if (recipeName.equals(RECOLOR_RECIPE_KEY)) {
+            inventory.setResult(computeRecolorResult(inventory).orElse(null));
+            return;
+        }
+
         Optional<BackpackTier> targetTier = parseTierUpKey(recipeName);
         if (targetTier.isEmpty()) {
             return; // not one of ours
@@ -155,6 +220,33 @@ public final class BackpackRecipeListener implements Listener {
         return Optional.empty();
     }
 
+    /** {@code inventory}'s 2-item grid recolored, if it's a valid (backpack, dye) pair — empty if either slot doesn't match, the backpack is a custom head (no color to change), or this server's API predates that color's bundle variant. */
+    private Optional<ItemStack> computeRecolorResult(CraftingInventory inventory) {
+        ItemStack backpackItem = null;
+        DyeColor chosenColor = null;
+        for (ItemStack item : inventory.getMatrix()) {
+            if (item == null || item.getType() == Material.AIR) {
+                continue;
+            }
+            if (BackpackManager.idOf(item).isPresent()) {
+                backpackItem = item;
+            } else {
+                Optional<DyeColor> color = dyeColorOf(item.getType());
+                if (color.isPresent()) {
+                    chosenColor = color.get();
+                }
+            }
+        }
+        if (backpackItem == null || chosenColor == null || backpackItem.getType() == Material.PLAYER_HEAD) {
+            return Optional.empty();
+        }
+        return bundleMaterialFor(chosenColor).map(material -> {
+            ItemStack recolored = backpackItem.clone();
+            recolored.setType(material); // BundleMeta carries over unchanged across every bundle color — id/tier/preview all survive
+            return recolored;
+        });
+    }
+
     private Optional<BackpackTier> parseTierUpKey(String recipeName) {
         String prefix = "backpack_tier_";
         if (!recipeName.startsWith(prefix)) {
@@ -171,9 +263,23 @@ public final class BackpackRecipeListener implements Listener {
      * The output slot at this point holds exactly what {@link #onPrepareCraft} last computed —
      * carrying either a fresh random id (base recipe) or the previous backpack's preserved id
      * (a tier-up) — so this never needs to re-scan the crafting grid itself.
+     *
+     * <p>A recolor craft is deliberately excluded up front: its result keeps the exact same id
+     * and tier the consumed backpack already had, so letting it fall through into the logic below
+     * would either wrongly re-register it as a brand-new (blank!) backpack — if it happened to be
+     * {@link BackpackTier#LEATHER} — or issue a harmless but pointless "tier bump" to the tier it's
+     * already at. Recoloring changes nothing this plugin persists at all: the chosen {@link
+     * Material} lives entirely on the physical item itself, the same way any other vanilla item
+     * property would.
      */
     @EventHandler
     public void onCraft(CraftItemEvent event) {
+        Recipe recipe = event.getRecipe();
+        if (recipe instanceof Keyed keyed && plugin.getName().equalsIgnoreCase(keyed.getKey().getNamespace())
+                && keyed.getKey().getKey().equals(RECOLOR_RECIPE_KEY)) {
+            return;
+        }
+
         ItemStack result = event.getCurrentItem();
         Optional<BackpackTier> tier = BackpackRegistry.tierOf(result);
         if (tier.isEmpty()) {
@@ -193,6 +299,13 @@ public final class BackpackRecipeListener implements Listener {
             });
         } else {
             backpackManager.bumpTierIfCached(id.get(), tier.get());
+            // Only reachable if this exact backpack was already cached this session (see
+            // bumpTierIfCached) — otherwise there's no in-memory contents to preview from yet, and
+            // the next real open/close cycle fills the preview in normally.
+            backpackManager.get(id.get()).ifPresent(cached -> {
+                backpackRegistry.refreshPreview(result, cached.getContents());
+                event.setCurrentItem(result);
+            });
             chestRepository.updateBackpackTier(id.get(), tier.get().ordinal()).exceptionally(ex -> {
                 plugin.getLogger().log(Level.WARNING, "Falha ao persistir upgrade de tier da mochila " + id.get(), ex);
                 return null;

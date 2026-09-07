@@ -1,5 +1,6 @@
 package dev.icaro.icaruschests.listener;
 
+import dev.icaro.icaruschests.backpack.BackpackRegistry;
 import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.gui.ControlButton;
@@ -95,14 +96,17 @@ public final class ChestGuiListener implements Listener {
 
     private final ChestManager chestManager;
     private final BackpackManager backpackManager;
+    private final BackpackRegistry backpackRegistry;
     private final ChestRepository chestRepository;
     private final Plugin plugin;
     /** Players with a Search sign currently open — see {@link #openSearchSign}/{@link PendingSearch}. */
     private final Map<UUID, PendingSearch> pendingSearches = new HashMap<>();
 
-    public ChestGuiListener(ChestManager chestManager, BackpackManager backpackManager, ChestRepository chestRepository, Plugin plugin) {
+    public ChestGuiListener(ChestManager chestManager, BackpackManager backpackManager, BackpackRegistry backpackRegistry,
+                             ChestRepository chestRepository, Plugin plugin) {
         this.chestManager = chestManager;
         this.backpackManager = backpackManager;
+        this.backpackRegistry = backpackRegistry;
         this.chestRepository = chestRepository;
         this.plugin = plugin;
     }
@@ -779,7 +783,35 @@ public final class ChestGuiListener implements Listener {
         if (!(event.getInventory().getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
-        resolveContainer(holder.getChestId())
-                .ifPresent(chest -> GuiFactory.syncVisibleToChest(chest, holder, event.getInventory()));
+        resolveContainer(holder.getChestId()).ifPresent(chest -> {
+            GuiFactory.syncVisibleToChest(chest, holder, event.getInventory());
+            if (chest instanceof IcarusBackpack backpack && event.getPlayer() instanceof Player player) {
+                refreshBackpackPreview(player, backpack);
+            }
+        });
+    }
+
+    /**
+     * Finds the physical backpack item in {@code player}'s own inventory (main + hotbar + offhand
+     * — wherever it actually landed) and refreshes its bundle-tooltip preview from {@code
+     * backpack}'s just-synced contents. A no-op if it isn't found (e.g. the player dropped or
+     * stashed it elsewhere while its own GUI was still open) — nothing here is load-bearing for
+     * correctness, only for the tooltip staying visually up to date.
+     */
+    private void refreshBackpackPreview(Player player, IcarusBackpack backpack) {
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
+            if (BackpackManager.idOf(item).filter(backpack.getId()::equals).isPresent()) {
+                backpackRegistry.refreshPreview(item, backpack.getContents());
+                player.getInventory().setItem(i, item);
+                return;
+            }
+        }
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        if (BackpackManager.idOf(offHand).filter(backpack.getId()::equals).isPresent()) {
+            backpackRegistry.refreshPreview(offHand, backpack.getContents());
+            player.getInventory().setItemInOffHand(offHand);
+        }
     }
 }
