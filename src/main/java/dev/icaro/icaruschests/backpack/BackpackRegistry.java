@@ -2,7 +2,6 @@ package dev.icaro.icaruschests.backpack;
 
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.tier.BackpackTier;
-import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
 import dev.icaro.icaruschests.util.CustomHeads;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import net.kyori.adventure.text.Component;
@@ -15,9 +14,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,7 +39,7 @@ public final class BackpackRegistry {
         this.configManager = configManager;
     }
 
-    /** Builds a backpack item at {@code tier} carrying {@code id} as its {@code BACKPACK_ID}, with an initial "empty" content summary in its lore. Does not register anything — purely the item. */
+    /** Builds a fresh, empty backpack item at {@code tier} carrying {@code id} as its {@code BACKPACK_ID}. Does not register anything — purely the item. */
     public ItemStack createBackpack(BackpackTier tier, UUID id) {
         Optional<String> headTexture = configManager.backpackHeadTexture(tier);
         ItemStack item = headTexture.isPresent() ? CustomHeads.createHead(headTexture.get()) : new ItemStack(Material.BUNDLE);
@@ -50,87 +47,66 @@ public final class BackpackRegistry {
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text("Mochila de " + tier.displayName(), tier.titleColor())
                 .decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("Clique para abrir.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("Capacidade: " + tier.totalCapacity(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
         meta.getPersistentDataContainer().set(NamespacedKeys.BACKPACK_ID, PersistentDataType.STRING, id.toString());
         meta.getPersistentDataContainer().set(NamespacedKeys.BACKPACK_TIER, PersistentDataType.INTEGER, tier.ordinal());
         item.setItemMeta(meta);
-        applyLore(item, tier, new ItemStack[0]);
-        sanitize(item);
         return item;
     }
 
-    /** How many distinct item types show up in the lore content summary — see {@link #refreshPreview}. */
+    /** How many distinct stacks show up in the bundle-shaped tooltip preview — see {@link #refreshPreview}. */
     private static final int PREVIEW_LIMIT = 12;
 
     /**
-     * Rebuilds {@code item}'s lore from scratch to reflect {@code contents} — a text summary
-     * ("64x Diamante", …), never a real {@link BundleMeta} item list. A vanilla client treats
-     * anything actually sitting in a bundle's own {@code minecraft:bundle_contents} component as
-     * real, extractable/insertable storage the moment the item is clicked in *any* inventory
-     * screen (the player's own, a chest, this plugin's own GUI in the background, anywhere) — an
-     * earlier version of this method populated exactly that, which let a plain right-click pull a
-     * genuine duplicate of an item out of thin air (the true copy still sitting safely in SQLite,
-     * completely unaware vanilla just handed out a second one). Lore is inert text with no such
-     * mechanism, so it carries none of that risk while still showing real names and counts.
-     * {@link #sanitize} is still called every time regardless, to actively strip out any real
-     * bundle contents a backpack built by that earlier, unsafe version might already be carrying.
+     * Mirrors a snapshot of {@code contents} into {@code item}'s own {@link BundleMeta} so a
+     * vanilla client's tooltip shows a real preview mosaic (and the weight/fullness bar) instead of
+     * always reading "Empty" — the true contents live in SQLite, keyed by {@code BACKPACK_ID}, this
+     * is only ever a snapshot copy, capped at {@value #PREVIEW_LIMIT} distinct stacks with each
+     * one's amount capped at its own normal max stack (same reasoning as {@code
+     * GuiFactory#displayItemFor} — a live client-facing item is never expected to claim more).
+     *
+     * <p><b>This alone used to be unsafe</b>: a real, non-empty {@code BundleMeta} is genuine,
+     * vanilla-functional storage — right-clicking the item in *any* inventory screen (this
+     * plugin's own GUI, the player's own inventory, a chest, anywhere) triggers Minecraft's own
+     * bundle insert/extract mechanic completely outside this plugin, letting a player pull a real
+     * duplicate of a "previewed" item out of thin air while the true copy stays safely in SQLite,
+     * unaware anything happened. What actually makes this safe now is {@code
+     * BackpackInteractListener#onBundleClickAttempt} unconditionally cancelling every plain
+     * right-click that touches a bundle-shaped backpack (as either the clicked slot or the held
+     * cursor item) in *any* inventory, everywhere — that's the one click type vanilla's bundle
+     * logic hooks into; every other click (left-click pickup/place, shift-click quick-move, drag,
+     * drop, hotbar swap) is completely unaffected and still moves the item around normally. Never
+     * reintroduce this preview without that guard staying in place.
+     *
+     * <p>Does nothing if {@code item} isn't bundle-shaped (a custom-head-textured backpack uses
+     * {@code SkullMeta}, which has no tooltip preview mechanism to hook into at all — and no
+     * click-driven interaction risk either, since heads have no special click behavior).
      */
-    public void refreshPreview(ItemStack item, BackpackTier tier, ItemStack[] contents) {
-        applyLore(item, tier, contents);
-        sanitize(item);
-    }
-
-    private void applyLore(ItemStack item, BackpackTier tier, ItemStack[] contents) {
-        ItemMeta meta = item.getItemMeta();
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.text("Clique para abrir.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-        lore.add(Component.text("Capacidade: " + tier.totalCapacity(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-        List<String> summary = contentSummary(contents);
-        if (summary.isEmpty()) {
-            lore.add(Component.text("Vazia.", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
-        } else {
-            lore.add(Component.text("Conteúdo:", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-            for (String line : summary) {
-                lore.add(Component.text(line, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-            }
+    public void refreshPreview(ItemStack item, ItemStack[] contents) {
+        if (!(item.getItemMeta() instanceof BundleMeta bundleMeta)) {
+            return;
         }
-        meta.lore(lore);
-        item.setItemMeta(meta);
-    }
-
-    /** Distinct item types present, merged by pretty name, in first-seen order — overflow collapses into one final "+N outros" line instead of an unbounded tooltip. */
-    private List<String> contentSummary(ItemStack[] contents) {
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        List<ItemStack> preview = new ArrayList<>();
         for (ItemStack stored : contents) {
             if (stored == null || stored.getType() == Material.AIR) {
                 continue;
             }
-            counts.merge(UpgradeRegistry.prettyName(stored.getType()), stored.getAmount(), Integer::sum);
-        }
-        List<String> lines = new ArrayList<>();
-        int shown = 0;
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (shown >= PREVIEW_LIMIT) {
-                lines.add("+ " + (counts.size() - PREVIEW_LIMIT) + " outro(s) tipo(s)");
+            preview.add(stored.getAmount() > stored.getMaxStackSize() ? cappedCopy(stored) : stored);
+            if (preview.size() >= PREVIEW_LIMIT) {
                 break;
             }
-            lines.add(entry.getValue() + "x " + entry.getKey());
-            shown++;
         }
-        return lines;
+        bundleMeta.setItems(preview);
+        item.setItemMeta(bundleMeta);
     }
 
-    /**
-     * Strips any real {@link BundleMeta} content list off {@code item} — a backpack must never
-     * actually carry vanilla-functional bundle contents (see {@link #refreshPreview}'s Javadoc for
-     * why). Safe and cheap to call unconditionally on any item that might be a backpack; a no-op if
-     * it isn't bundle-shaped or already has nothing in it.
-     */
-    public void sanitize(ItemStack item) {
-        if (item == null || !(item.getItemMeta() instanceof BundleMeta bundleMeta) || !bundleMeta.hasItems()) {
-            return;
-        }
-        bundleMeta.setItems(List.of());
-        item.setItemMeta(bundleMeta);
+    private static ItemStack cappedCopy(ItemStack item) {
+        ItemStack copy = item.clone();
+        copy.setAmount(item.getMaxStackSize());
+        return copy;
     }
 
     /** The {@code BackpackTier} an item is at, if it's a backpack at all. */
