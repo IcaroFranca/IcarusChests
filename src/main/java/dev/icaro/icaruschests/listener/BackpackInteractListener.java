@@ -1,16 +1,18 @@
 package dev.icaro.icaruschests.listener;
 
-import dev.icaro.icaruschests.backpack.BackpackRegistry;
 import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.model.IcarusBackpack;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Optional;
@@ -22,23 +24,20 @@ import java.util.Optional;
  * attacking too rather than only right-click. {@code SpecialItemProtectionListener} separately
  * keeps it from ever being placed as a block in the first place.
  *
- * <p>Also the safety net for a real duplication bug in an earlier version of this plugin, which
- * briefly gave backpacks a genuine (vanilla-functional, right-click-extractable/insertable)
- * bundle content list for tooltip preview purposes — see {@code BackpackRegistry#sanitize} for
- * the fix itself. Every touch here ({@link #onInteract}, {@link #onAttack}, and — since a player
- * could be sitting on an already-poisoned backpack from before this fix ever gets applied — every
- * {@link #onJoin} and the equivalent sweep {@code IcarusChestsPlugin} runs at {@code onEnable} for
- * whoever's already online) strips any such contents on sight, before the item could ever be
- * clicked in some other inventory screen and exploited.
+ * <p>{@link #onBundleClickAttempt} is what actually makes {@code BackpackRegistry#refreshPreview}
+ * safe to give the item real, vanilla-visible bundle contents at all: without it, right-clicking
+ * a bundle-shaped backpack in *any* inventory screen (this plugin's own GUI, the player's own
+ * inventory, a chest, anywhere) would trigger Minecraft's own bundle insert/extract mechanic —
+ * completely outside this plugin, and a real, confirmed duplication vector in an earlier version
+ * (see that method's own Javadoc). Every other click type (left-click, shift-click, drag, drop,
+ * hotbar swap) is untouched and still moves the item around an inventory completely normally.
  */
 public final class BackpackInteractListener implements Listener {
 
     private final BackpackManager backpackManager;
-    private final BackpackRegistry backpackRegistry;
 
-    public BackpackInteractListener(BackpackManager backpackManager, BackpackRegistry backpackRegistry) {
+    public BackpackInteractListener(BackpackManager backpackManager) {
         this.backpackManager = backpackManager;
-        this.backpackRegistry = backpackRegistry;
     }
 
     @EventHandler
@@ -50,7 +49,6 @@ public final class BackpackInteractListener implements Listener {
         if (BackpackManager.idOf(item).isEmpty()) {
             return;
         }
-        backpackRegistry.sanitize(item);
         event.setCancelled(true);
         openBackpack(event.getPlayer(), item);
     }
@@ -65,29 +63,37 @@ public final class BackpackInteractListener implements Listener {
         if (BackpackManager.idOf(item).isEmpty()) {
             return;
         }
-        backpackRegistry.sanitize(item);
         event.setCancelled(true);
         openBackpack(player, item);
     }
 
-    /** Catches a player who logs in already carrying a backpack poisoned by an earlier plugin version — see the class Javadoc. */
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        sanitizeInventory(event.getPlayer());
+    /**
+     * Cancels a plain right-click ({@code ClickType.RIGHT} — vanilla's own bundle logic isn't
+     * gated behind any other click type: not shift-click, drag, drop, or a hotbar-number swap)
+     * touching a bundle-shaped backpack in *any* inventory, as either the clicked slot's item or
+     * the item held on the cursor — that covers both directions vanilla's mechanic supports
+     * (right-clicking a slotted bundle to extract/insert with an empty/held cursor, and
+     * right-clicking *any other* slot while holding a bundle on the cursor to insert that slot's
+     * stack into it). A custom-head-textured backpack is never checked for this at all — a head
+     * has no bundle mechanic to protect against, and blocking its right-click would only get in
+     * the way of otherwise-normal inventory management.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onBundleClickAttempt(InventoryClickEvent event) {
+        if (event.getClick() != ClickType.RIGHT) {
+            return;
+        }
+        if (isBundleBackpack(event.getCurrentItem()) || isBundleBackpack(event.getCursor())) {
+            event.setCancelled(true);
+        }
     }
 
-    /** Strips any real bundle contents off every backpack in {@code player}'s inventory (main + hotbar + offhand). Safe to call unconditionally. */
-    public void sanitizeInventory(Player player) {
-        ItemStack[] contents = player.getInventory().getContents();
-        for (ItemStack item : contents) {
-            if (BackpackManager.idOf(item).isPresent()) {
-                backpackRegistry.sanitize(item);
-            }
+    private boolean isBundleBackpack(ItemStack item) {
+        if (item == null || BackpackManager.idOf(item).isEmpty()) {
+            return false;
         }
-        ItemStack offHand = player.getInventory().getItemInOffHand();
-        if (BackpackManager.idOf(offHand).isPresent()) {
-            backpackRegistry.sanitize(offHand);
-        }
+        Material type = item.getType();
+        return type == Material.BUNDLE || type.name().endsWith("_BUNDLE");
     }
 
     private void openBackpack(Player player, ItemStack item) {
