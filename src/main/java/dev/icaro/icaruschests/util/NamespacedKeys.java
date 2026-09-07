@@ -46,9 +46,6 @@ public final class NamespacedKeys {
     /** Marker tag on the Recipe Book item's PDC — present (value irrelevant) means "this is the recipe book". */
     public static NamespacedKey RECIPE_BOOK;
 
-    /** Tag on a recipe book navigation button's PDC: {@code "prev"} or {@code "next"}. */
-    public static NamespacedKey RECIPE_NAV;
-
     /** Tag on a chest GUI's control-row Search/Organize button's PDC: {@code "search"} or {@code "organize"}. */
     public static NamespacedKey CONTROL_BUTTON;
 
@@ -68,7 +65,6 @@ public final class NamespacedKeys {
         UPGRADE_TYPE = new NamespacedKey(plugin, "upgrade_type");
         FILTER_ITEMS = new NamespacedKey(plugin, "filter_items");
         RECIPE_BOOK = new NamespacedKey(plugin, "recipe_book");
-        RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
         CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
         BACKPACK_ID = new NamespacedKey(plugin, "backpack_id");
         BACKPACK_TIER = new NamespacedKey(plugin, "backpack_tier");

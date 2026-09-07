@@ -9,6 +9,7 @@ import dev.icaro.icaruschests.command.IcarusChestsCommand;
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
+import dev.icaro.icaruschests.gui.RecipeBookGui;
 import dev.icaro.icaruschests.gui.RecipeBookRegistry;
 import dev.icaro.icaruschests.listener.BackpackInteractListener;
 import dev.icaro.icaruschests.listener.BackpackRecipeListener;
@@ -70,6 +71,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         configManager = new ConfigManager(this);
         configManager.load();
         GuiFactory.init(configManager);
+        RecipeBookGui.init(this);
         GeyserSkullExport.export(this, configManager);
 
         if (!openDatabase()) {

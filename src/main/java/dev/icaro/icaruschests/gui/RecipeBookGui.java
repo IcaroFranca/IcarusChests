@@ -1,71 +1,115 @@
 package dev.icaro.icaruschests.gui;
 
-import dev.icaro.icaruschests.util.NamespacedKeys;
+import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder;
+import com.github.stefvanschie.inventoryframework.gui.GuiItem;
+import com.github.stefvanschie.inventoryframework.gui.type.ChestGui;
+import com.github.stefvanschie.inventoryframework.pane.StaticPane;
+import com.github.stefvanschie.inventoryframework.pane.util.Slot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.inventory.Inventory;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
- * Renders one page of the read-only recipe book: a 3x3 crafting grid (see
- * {@link #GRID_SLOTS}, row-major), an arrow pointing at the item it
- * produces, and a bottom row with previous/next-recipe buttons and a page
- * indicator — one recipe per page. See {@code RecipeBookRegistry} for the
- * page content and {@code RecipeBookListener} for input handling; every
- * slot here is purely cosmetic; nothing can be taken, placed, or moved.
+ * Renders the read-only recipe book: a 3x3 crafting grid, an arrow pointing at the item it
+ * produces, and a bottom row with previous/next-recipe buttons and a page indicator — one recipe
+ * per page. See {@code RecipeBookRegistry} for the page content. Built on InventoryFramework
+ * ({@link ChestGui}/{@link StaticPane}/{@link GuiItem}) instead of a hand-rolled {@code Inventory}
+ * + {@code InventoryHolder}: page state and click routing live in the {@link GuiItem} closures
+ * below rather than in a separate holder class and a click listener that decodes a
+ * PersistentDataContainer tag on every click.
  */
 public final class RecipeBookGui {
 
-    public static final int SIZE = 54;
-    private static final int[] GRID_SLOTS = {10, 11, 12, 19, 20, 21, 28, 29, 30};
-    private static final int ARROW_SLOT = 22;
-    private static final int RESULT_SLOT = 24;
-    private static final int PREVIOUS_SLOT = 45;
-    private static final int PAGE_INDICATOR_SLOT = 49;
-    private static final int NEXT_SLOT = 53;
+    private static final int ROWS = 6;
+    /** Grid cell {@code (x, y)} for each of {@code RecipeBookEntry#grid()}'s 0-8 keys (row-major). */
+    private static final int[][] GRID_XY = {
+            {1, 1}, {2, 1}, {3, 1},
+            {1, 2}, {2, 2}, {3, 2},
+            {1, 3}, {2, 3}, {3, 3},
+    };
+    private static final int ARROW_X = 4;
+    private static final int RESULT_X = 6;
+    private static final int CENTER_Y = 2;
+    private static final int BOTTOM_Y = 5;
+    private static final int PREVIOUS_X = 0;
+    private static final int PAGE_INDICATOR_X = 4;
+    private static final int NEXT_X = 8;
+
+    private static Plugin plugin;
 
     private RecipeBookGui() {
     }
 
-    public static Inventory open(List<RecipeBookEntry> entries, int page) {
-        RecipeBookHolder holder = new RecipeBookHolder();
-        Inventory inventory = Bukkit.createInventory(holder, SIZE, title(entries.size()));
-        holder.setInventory(inventory);
-        holder.setPage(page);
-        populate(inventory, entries, page);
-        return inventory;
+    /** Must be called once during {@code onEnable}, before the recipe book is ever opened. */
+    public static void init(Plugin plugin) {
+        RecipeBookGui.plugin = plugin;
     }
 
-    /** Redraws {@code inventory} for {@code page} in place — used both on open and after a nav click. */
-    public static void populate(Inventory inventory, List<RecipeBookEntry> entries, int page) {
-        inventory.clear();
+    /** Builds the recipe book (starting on its first page) and opens it for {@code player}. */
+    public static void open(Player player, RecipeBookRegistry registry) {
+        build(registry, 0).show(player);
+    }
+
+    private static ChestGui build(RecipeBookRegistry registry, int page) {
+        List<RecipeBookEntry> entries = registry.buildAll();
+        ChestGui gui = new ChestGui(ROWS, ComponentHolder.of(title(entries.size())), plugin);
+        gui.setOnGlobalClick(event -> event.setCancelled(true)); // read-only: nothing here can be taken, placed or moved
+
+        StaticPane pane = new StaticPane(9, ROWS);
+        gui.addPane(Slot.fromXY(0, 0), pane);
+        populate(gui, pane, registry, entries, page);
+        return gui;
+    }
+
+    /**
+     * Redraws {@code pane} for {@code page} in place. Rebuilds the entry list fresh on every
+     * navigation click (not just on open), same as before — so icons stay in sync with whatever's
+     * currently registered (custom heads from {@code config.yml} included) even if the player
+     * navigates right after a {@code /icaruschests reload}.
+     */
+    private static void populate(ChestGui gui, StaticPane pane, RecipeBookRegistry registry,
+                                  List<RecipeBookEntry> entries, int page) {
+        pane.clear();
         RecipeBookEntry entry = entries.get(page);
 
         for (Map.Entry<Integer, ItemStack> cell : entry.grid().entrySet()) {
-            inventory.setItem(GRID_SLOTS[cell.getKey()], cell.getValue());
+            int[] xy = GRID_XY[cell.getKey()];
+            pane.addItem(new GuiItem(cell.getValue(), plugin), xy[0], xy[1]);
         }
-        inventory.setItem(ARROW_SLOT, arrowIcon());
-        inventory.setItem(RESULT_SLOT, entry.result());
+        pane.addItem(new GuiItem(arrowIcon(), plugin), ARROW_X, CENTER_Y);
+        pane.addItem(new GuiItem(entry.result(), plugin), RESULT_X, CENTER_Y);
 
-        for (int slot = PREVIOUS_SLOT; slot < SIZE; slot++) {
-            inventory.setItem(slot, filler());
+        for (int x = 0; x < 9; x++) {
+            pane.addItem(new GuiItem(filler(), plugin), x, BOTTOM_Y);
         }
         if (page > 0) {
-            inventory.setItem(PREVIOUS_SLOT, navItem("« Receita anterior", "prev"));
+            pane.addItem(new GuiItem(navIcon("« Receita anterior"), event -> {
+                event.setCancelled(true);
+                navigate(gui, pane, registry, page - 1);
+            }, plugin), PREVIOUS_X, BOTTOM_Y);
         }
         if (page < entries.size() - 1) {
-            inventory.setItem(NEXT_SLOT, navItem("Próxima receita »", "next"));
+            pane.addItem(new GuiItem(navIcon("Próxima receita »"), event -> {
+                event.setCancelled(true);
+                navigate(gui, pane, registry, page + 1);
+            }, plugin), NEXT_X, BOTTOM_Y);
         }
-        inventory.setItem(PAGE_INDICATOR_SLOT, pageIndicator(entry.title(), page, entries.size()));
+        pane.addItem(new GuiItem(pageIndicator(entry.title(), page, entries.size()), plugin), PAGE_INDICATOR_X, BOTTOM_Y);
+    }
+
+    private static void navigate(ChestGui gui, StaticPane pane, RecipeBookRegistry registry, int page) {
+        List<RecipeBookEntry> entries = registry.buildAll();
+        int clamped = Math.max(0, Math.min(entries.size() - 1, page));
+        populate(gui, pane, registry, entries, clamped);
+        gui.update();
     }
 
     private static Component title(int totalEntries) {
@@ -80,11 +124,10 @@ public final class RecipeBookGui {
         return item;
     }
 
-    private static ItemStack navItem(String name, String direction) {
+    private static ItemStack navIcon(String name) {
         ItemStack item = new ItemStack(Material.ARROW);
         ItemMeta meta = item.getItemMeta();
         meta.displayName(Component.text(name, NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-        meta.getPersistentDataContainer().set(NamespacedKeys.RECIPE_NAV, PersistentDataType.STRING, direction);
         item.setItemMeta(meta);
         return item;
     }
@@ -106,14 +149,5 @@ public final class RecipeBookGui {
         meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
         item.setItemMeta(meta);
         return item;
-    }
-
-    /** The direction a clicked nav item requests ({@code "prev"}/{@code "next"}), if it is one. */
-    public static Optional<String> navDirection(ItemStack item) {
-        if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(
-                item.getItemMeta().getPersistentDataContainer().get(NamespacedKeys.RECIPE_NAV, PersistentDataType.STRING));
     }
 }
