@@ -18,7 +18,7 @@ import java.util.Optional;
  * that doubling is per-chest-instance state (see {@code IcarusChest}), not
  * part of this enum.
  */
-public enum ChestTier {
+public enum ChestTier implements StorageTier {
 
     NORMAL("Normal", 27, TextColor.color(0xB6, 0x86, 0x55), null, 0, 1),
     COPPER("Cobre", 45, TextColor.color(0xC8, 0x71, 0x37), Material.COPPER_INGOT, 8, 1),

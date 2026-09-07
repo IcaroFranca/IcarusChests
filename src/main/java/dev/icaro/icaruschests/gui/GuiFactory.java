@@ -1,8 +1,8 @@
 package dev.icaro.icaruschests.gui;
 
 import dev.icaro.icaruschests.config.ConfigManager;
-import dev.icaro.icaruschests.model.IcarusChest;
-import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.model.StorageContainer;
+import dev.icaro.icaruschests.tier.StorageTier;
 import dev.icaro.icaruschests.util.CustomHeads;
 import dev.icaro.icaruschests.util.NamespacedKeys;
 import net.kyori.adventure.text.Component;
@@ -22,19 +22,22 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
- * Builds and refreshes the scrollable GUI representing an {@link IcarusChest}.
+ * Builds and refreshes the scrollable GUI representing a {@code StorageContainer} — a placed
+ * chest ({@code IcarusChest}) or a portable backpack ({@code IcarusBackpack}) alike; everything
+ * here is written once against that shared interface (see {@code StorageContainer}/{@code
+ * StorageTier}) rather than duplicated per kind.
  *
  * <p>A single Minecraft chest-type inventory is hard-capped at 54 slots by
  * the client itself — not a Bukkit/Paper limitation, a protocol one — so a
  * tier (or a doubled chest) bigger than that can't fit on one screen without
  * a custom client mod, which is out of scope for a server-only plugin.
- * Instead of paginating, every chest reserves a bottom control row (9 slots,
+ * Instead of paginating, every container reserves a bottom control row (9 slots,
  * never counted toward the tier's own capacity) hosting scroll buttons, a
- * position indicator, and the chest's pluggable-upgrade slots (see {@code
+ * position indicator, and the container's pluggable-upgrade slots (see {@code
  * UpgradeRegistry}). When capacity exceeds what fits above that row (45
  * slots), the top area becomes a scrollable window instead of showing
  * everything at once — scrolling redraws the same {@link Inventory} in
- * place, it never closes/reopens the view. A small chest (Normal, Copper,
+ * place, it never closes/reopens the view. A small container (Normal, Copper,
  * single Iron) just gets a plain window sized to exactly {@code capacity + 9},
  * no scrolling machinery at all.
  *
@@ -62,13 +65,13 @@ public final class GuiFactory {
     }
 
     /** Builds the GUI (starting scrolled to the top) and opens it for {@code player}. */
-    public static Inventory open(Player player, IcarusChest chest) {
+    public static Inventory open(Player player, StorageContainer chest) {
         Inventory inventory = build(chest, 0);
         player.openInventory(inventory);
         return inventory;
     }
 
-    public static Inventory build(IcarusChest chest, int scrollOffset) {
+    public static Inventory build(StorageContainer chest, int scrollOffset) {
         int capacity = chest.effectiveTotalCapacity();
         IcarusChestHolder holder = new IcarusChestHolder(chest.getId(), chest.getTier());
         Inventory inventory = Bukkit.createInventory(holder, guiSize(capacity), title(chest));
@@ -85,7 +88,7 @@ public final class GuiFactory {
      * recreates the inventory or changes its title/size — safe to call
      * repeatedly on the same open view (scrolling, installing an upgrade).
      */
-    public static void populate(IcarusChest chest, IcarusChestHolder holder, Inventory inventory) {
+    public static void populate(StorageContainer chest, IcarusChestHolder holder, Inventory inventory) {
         int capacity = chest.effectiveTotalCapacity();
         int visibleSlots = visibleContentSlots(capacity);
         int offset = holder.getScrollOffset();
@@ -107,17 +110,17 @@ public final class GuiFactory {
     }
 
     /** Number of content slots currently visible (excludes the control row). */
-    public static int visibleSlotCount(IcarusChest chest) {
+    public static int visibleSlotCount(StorageContainer chest) {
         return visibleContentSlots(chest.effectiveTotalCapacity());
     }
 
     /** Whether {@code localSlot} belongs to the reserved control row. */
-    public static boolean isControlSlot(IcarusChest chest, int localSlot) {
+    public static boolean isControlSlot(StorageContainer chest, int localSlot) {
         return localSlot >= controlRowStart(chest.effectiveTotalCapacity());
     }
 
     /** The upgrade slot index a control-row slot corresponds to, if that column is active for this chest's tier. */
-    public static OptionalInt upgradeSlotIndex(IcarusChest chest, int localSlot) {
+    public static OptionalInt upgradeSlotIndex(StorageContainer chest, int localSlot) {
         int capacity = chest.effectiveTotalCapacity();
         int rowStart = controlRowStart(capacity);
         if (localSlot < rowStart) {
@@ -139,7 +142,7 @@ public final class GuiFactory {
      * marking it dirty. Called on every GUI close and before scrolling, so
      * edits are never lost mid-session.
      */
-    public static void syncVisibleToChest(IcarusChest chest, IcarusChestHolder holder, Inventory inventory) {
+    public static void syncVisibleToChest(StorageContainer chest, IcarusChestHolder holder, Inventory inventory) {
         int visibleSlots = visibleSlotCount(chest);
         int offset = holder.getScrollOffset();
         ItemStack[] contents = chest.getContents();
@@ -206,14 +209,14 @@ public final class GuiFactory {
     }
 
     /** Clamped scroll target for a {@link NavAction}; equal to {@code currentOffset} if the move isn't possible. */
-    public static int scrollTarget(IcarusChest chest, int currentOffset, NavAction action) {
+    public static int scrollTarget(StorageContainer chest, int currentOffset, NavAction action) {
         int maxOffset = Math.max(0, chest.effectiveTotalCapacity() - CONTENT_WINDOW);
         int delta = action == NavAction.SCROLL_DOWN ? 9 : -9;
         return Math.max(0, Math.min(maxOffset, currentOffset + delta));
     }
 
     /** Moves {@code holder} to {@code newOffset} and redraws {@code inventory} in place. Caller must sync the old offset first. */
-    public static void scrollTo(IcarusChest chest, IcarusChestHolder holder, Inventory inventory, int newOffset) {
+    public static void scrollTo(StorageContainer chest, IcarusChestHolder holder, Inventory inventory, int newOffset) {
         holder.setScrollOffset(newOffset);
         populate(chest, holder, inventory);
     }
@@ -250,7 +253,7 @@ public final class GuiFactory {
         return guiSize(capacity) - CONTROL_ROW_SIZE;
     }
 
-    private static ItemStack controlItem(IcarusChest chest, IcarusChestHolder holder, int column,
+    private static ItemStack controlItem(StorageContainer chest, IcarusChestHolder holder, int column,
                                           boolean canScrollUp, boolean canScrollDown, int offset, int capacity) {
         if (column == 0 && canScrollUp) {
             return navItem(Material.ARROW, "▲ Rolar para Cima", "Sobe uma fileira.", NavAction.SCROLL_UP);
@@ -332,7 +335,7 @@ public final class GuiFactory {
         return current;
     }
 
-    private static int upgradeColumnIndex(ChestTier tier, int column) {
+    private static int upgradeColumnIndex(StorageTier tier, int column) {
         int slotCount = tier.upgradeSlotCount();
         for (int i = 0; i < UPGRADE_SLOT_COLUMNS.length && i < slotCount; i++) {
             if (UPGRADE_SLOT_COLUMNS[i] == column) {
@@ -342,9 +345,9 @@ public final class GuiFactory {
         return -1;
     }
 
-    private static Component title(IcarusChest chest) {
-        ChestTier tier = chest.getTier();
-        String label = "[" + tier.displayName() + "]" + (chest.isDoubled() ? " Baú Duplo" : " Baú");
+    private static Component title(StorageContainer chest) {
+        StorageTier tier = chest.getTier();
+        String label = "[" + tier.displayName() + "] " + chest.noun();
         return Component.text(label, tier.titleColor());
     }
 

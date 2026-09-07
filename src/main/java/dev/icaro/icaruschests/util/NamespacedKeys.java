@@ -52,6 +52,12 @@ public final class NamespacedKeys {
     /** Tag on a chest GUI's control-row Search/Organize button's PDC: {@code "search"} or {@code "organize"}. */
     public static NamespacedKey CONTROL_BUTTON;
 
+    /** Tag on a backpack item's PDC identifying its unique {@code IcarusBackpack} id (UUID string) — its identity lives on the item, not a block. */
+    public static NamespacedKey BACKPACK_ID;
+
+    /** Tag on a backpack item's PDC identifying its {@code BackpackTier} ordinal. */
+    public static NamespacedKey BACKPACK_TIER;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
@@ -64,5 +70,7 @@ public final class NamespacedKeys {
         RECIPE_BOOK = new NamespacedKey(plugin, "recipe_book");
         RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
         CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
+        BACKPACK_ID = new NamespacedKey(plugin, "backpack_id");
+        BACKPACK_TIER = new NamespacedKey(plugin, "backpack_tier");
     }
 }

@@ -1,5 +1,6 @@
 package dev.icaro.icaruschests.config;
 
+import dev.icaro.icaruschests.tier.BackpackTier;
 import dev.icaro.icaruschests.tier.ChestTier;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -39,6 +40,7 @@ public final class ConfigManager {
     // Keyed by lowercase button name ("search", "organize") rather than an enum for the same
     // reason as above — the gui package already depends on config.
     private final Map<String, String> controlHeadTextures = new HashMap<>();
+    private final Map<BackpackTier, String> backpackHeadTextures = new EnumMap<>(BackpackTier.class);
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -82,6 +84,17 @@ public final class ConfigManager {
                 String texture = controlHeads.getString(key, "");
                 if (texture != null && !texture.isBlank()) {
                     controlHeadTextures.put(key.toLowerCase(), texture.trim());
+                }
+            }
+        }
+
+        backpackHeadTextures.clear();
+        ConfigurationSection backpackHeads = plugin.getConfig().getConfigurationSection("backpack-heads");
+        if (backpackHeads != null) {
+            for (BackpackTier tier : BackpackTier.values()) {
+                String texture = backpackHeads.getString(tier.name().toLowerCase(), "");
+                if (texture != null && !texture.isBlank()) {
+                    backpackHeadTextures.put(tier, texture.trim());
                 }
             }
         }
@@ -134,6 +147,11 @@ public final class ConfigManager {
         return Optional.ofNullable(controlHeadTextures.get(buttonName.toLowerCase()));
     }
 
+    /** The configured custom-head Base64 texture for this backpack tier, if the admin set one. */
+    public Optional<String> backpackHeadTexture(BackpackTier tier) {
+        return Optional.ofNullable(backpackHeadTextures.get(tier));
+    }
+
     /**
      * Every custom-head Base64 texture currently configured, across kit heads, upgrade heads and
      * control-row heads — for exporting to third-party integrations (see {@code
@@ -145,6 +163,7 @@ public final class ConfigManager {
         all.addAll(upgradeKitHeadTextures.values());
         all.addAll(upgradeHeadTextures.values());
         all.addAll(controlHeadTextures.values());
+        all.addAll(backpackHeadTextures.values());
         return all;
     }
 }

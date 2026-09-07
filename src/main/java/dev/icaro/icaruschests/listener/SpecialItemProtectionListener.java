@@ -11,8 +11,8 @@ import org.bukkit.persistence.PersistentDataType;
 
 /**
  * Refuses to let any of the plugin's own special items — a tier upgrade kit,
- * a pluggable upgrade (Filter/Stack), or a control-row button (Search/
- * Organize) — be placed as a block. Most of these render as a {@code
+ * a pluggable upgrade (Filter/Stack), a control-row button (Search/
+ * Organize), or a backpack — be placed as a block. Most of these render as a {@code
  * PLAYER_HEAD} custom head (see {@code CustomHeads}), which is otherwise a
  * perfectly placeable vanilla block; placing one would turn a functional item
  * into a decorative world block, silently discarding whatever the plugin's
@@ -38,6 +38,7 @@ public final class SpecialItemProtectionListener implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         return pdc.has(NamespacedKeys.UPGRADE_KIT_TIER, PersistentDataType.INTEGER)
                 || pdc.has(NamespacedKeys.UPGRADE_TYPE, PersistentDataType.STRING)
-                || pdc.has(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
+                || pdc.has(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING)
+                || pdc.has(NamespacedKeys.BACKPACK_ID, PersistentDataType.STRING);
     }
 }

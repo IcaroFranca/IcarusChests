@@ -1,7 +1,9 @@
 package dev.icaro.icaruschests.persistence;
 
 import dev.icaro.icaruschests.model.ChestLocation;
+import dev.icaro.icaruschests.model.IcarusBackpack;
 import dev.icaro.icaruschests.model.IcarusChest;
+import dev.icaro.icaruschests.model.StorageContainer;
 import org.bukkit.inventory.ItemStack;
 
 import java.sql.PreparedStatement;
@@ -57,6 +59,47 @@ public final class ChestRepository {
         });
     }
 
+    /** Inserts a newly crafted backpack — a {@code chest} row with {@code kind='BACKPACK'} and no location at all. */
+    public CompletableFuture<Void> insertBackpack(IcarusBackpack backpack) {
+        return database.submit(connection -> {
+            long now = System.currentTimeMillis();
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO chest(id, world_uuid, x, y, z, tier, linked_chest_id, owner_uuid, created_at, updated_at, is_doubled, kind)
+                    VALUES (?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?, ?, 0, 'BACKPACK')
+                    ON CONFLICT(id) DO UPDATE SET
+                        tier = excluded.tier,
+                        updated_at = excluded.updated_at
+                    """)) {
+                statement.setString(1, backpack.getId().toString());
+                statement.setInt(2, backpack.getTier().ordinal());
+                statement.setString(3, null); // owner_uuid: not tracked until a later milestone
+                statement.setLong(4, now);
+                statement.setLong(5, now);
+                statement.executeUpdate();
+            }
+        });
+    }
+
+    /**
+     * Bumps a backpack's tier after it's recrafted with the next tier's ore. Deliberately doesn't
+     * touch {@code chest_inventory} at all: its contents blob simply stays whatever size it already
+     * was, and {@link #loadContents} already resizes to fit *whatever capacity is asked of it* the
+     * next time this backpack is actually opened (padding with empty slots, same as a chest tier
+     * upgrade's resize — just done lazily on next load instead of eagerly here) — so a bump doesn't
+     * need this backpack's current contents read back first, in-memory or not.
+     */
+    public CompletableFuture<Void> updateBackpackTier(UUID backpackId, int newTierOrdinal) {
+        return database.submit(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE chest SET tier = ?, updated_at = ? WHERE id = ?")) {
+                statement.setInt(1, newTierOrdinal);
+                statement.setLong(2, System.currentTimeMillis());
+                statement.setString(3, backpackId.toString());
+                statement.executeUpdate();
+            }
+        });
+    }
+
     /** Deletes the chest row; {@code ON DELETE CASCADE} takes its {@code chest_inventory} row with it. */
     public CompletableFuture<Void> delete(UUID chestId) {
         return database.submit(connection -> {
@@ -67,8 +110,12 @@ public final class ChestRepository {
         });
     }
 
-    /** Upserts the chest's current contents; serialization happens on the calling thread before the DB hop. */
-    public CompletableFuture<Void> saveContents(IcarusChest chest) {
+    /**
+     * Upserts a chest's or a backpack's current contents (both are rows in {@code chest_inventory}
+     * keyed purely by id — see {@link StorageContainer}); serialization happens on the calling
+     * thread before the DB hop.
+     */
+    public CompletableFuture<Void> saveContents(StorageContainer chest) {
         String serialized = ItemStackSerializer.serialize(chest.getContents());
         UUID chestId = chest.getId();
         int slotCount = chest.getContents().length;
