@@ -1,12 +1,16 @@
 package dev.icaro.icaruschests.chest;
 
+import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.model.IcarusBackpack;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.model.StorageContainer;
 import dev.icaro.icaruschests.persistence.ChestRepository;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -42,6 +46,22 @@ public final class AutosaveTask implements Runnable {
         for (IcarusBackpack backpack : backpackManager.all()) {
             saveIfDirty(backpack, "mochila");
         }
+        // A placed chest gets evicted on ChunkUnloadEvent instead — a backpack belongs to no
+        // chunk, so this periodic sweep is its only way out of memory. Safe to run right after the
+        // saves above: saveContents() already serialized each dirty one's contents onto the async
+        // pipeline before this loop ever runs, so evicting the in-memory object here can't lose
+        // anything still in flight to disk.
+        backpackManager.evictIdle(this::isOpenByAnyone);
+    }
+
+    private boolean isOpenByAnyone(UUID backpackId) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getOpenInventory().getTopInventory().getHolder() instanceof IcarusChestHolder holder
+                    && holder.getChestId().equals(backpackId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void saveIfDirty(StorageContainer container, String kindLabel) {

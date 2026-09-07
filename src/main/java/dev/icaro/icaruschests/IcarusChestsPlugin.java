@@ -79,10 +79,10 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         chestRepository = new ChestRepository(database);
         upgradeKitRegistry = new UpgradeKitRegistry(this, configManager);
         upgradeRegistry = new UpgradeRegistry(this, configManager);
-        recipeBookRegistry = new RecipeBookRegistry(upgradeKitRegistry, upgradeRegistry);
+        backpackRegistry = new BackpackRegistry(configManager);
+        recipeBookRegistry = new RecipeBookRegistry(upgradeKitRegistry, upgradeRegistry, backpackRegistry);
         chestManager = new ChestManager(chestRepository, upgradeRegistry, this);
         backpackManager = new BackpackManager(chestRepository, upgradeRegistry, this);
-        backpackRegistry = new BackpackRegistry(configManager);
         backpackRecipeListener = new BackpackRecipeListener(this, backpackRegistry, backpackManager, chestRepository);
         autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger());
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);

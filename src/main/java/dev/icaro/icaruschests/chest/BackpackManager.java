@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 
 /**
@@ -81,6 +82,20 @@ public final class BackpackManager {
     /** All backpacks currently held in memory (touched at least once this run). Used by the autosave sweep. */
     public Collection<IcarusBackpack> all() {
         return byId.values();
+    }
+
+    /**
+     * Drops any cached backpack that's both unmodified since its last save and not currently open
+     * in anyone's view — unlike a placed chest (evicted on {@code ChunkUnloadEvent}), a backpack
+     * belongs to no chunk at all, so without this the cache would simply keep every backpack ever
+     * touched for the rest of the server's uptime. {@code stillOpen} decides the second condition
+     * (deliberately not this class's own concern — it has no notion of GUIs at all, see {@code
+     * AutosaveTask}, the only caller); a dirty one is left alone regardless; either way the
+     * eviction only ever drops the in-memory copy, never anything already safely on disk — the
+     * next touch just re-hydrates it from SQLite exactly like a fresh server start would.
+     */
+    public void evictIdle(Predicate<UUID> stillOpen) {
+        byId.values().removeIf(backpack -> !backpack.isDirty() && !stillOpen.test(backpack.getId()));
     }
 
     /** The {@code BACKPACK_ID} an item's PDC carries, if it's a backpack of ours at all (a corrupted/foreign tag reads as "not one"). */
