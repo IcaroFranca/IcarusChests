@@ -803,14 +803,14 @@ public final class ChestGuiListener implements Listener {
         for (int i = 0; i < contents.length; i++) {
             ItemStack item = contents[i];
             if (BackpackManager.idOf(item).filter(backpack.getId()::equals).isPresent()) {
-                backpackRegistry.refreshPreview(item, backpack.getContents());
+                backpackRegistry.refreshPreview(item, backpack.getTier(), backpack.getContents());
                 player.getInventory().setItem(i, item);
                 return;
             }
         }
         ItemStack offHand = player.getInventory().getItemInOffHand();
         if (BackpackManager.idOf(offHand).filter(backpack.getId()::equals).isPresent()) {
-            backpackRegistry.refreshPreview(offHand, backpack.getContents());
+            backpackRegistry.refreshPreview(offHand, backpack.getTier(), backpack.getContents());
             player.getInventory().setItemInOffHand(offHand);
         }
     }
