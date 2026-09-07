@@ -378,9 +378,13 @@ public final class ChestGuiListener implements Listener {
     /**
      * A drag can smear a held stack across several content slots at once — vanilla's own math
      * already keeps each slot within the item's normal limit (a drag can't reach a Stack
-     * upgrade's higher cap; that only happens via the single-slot paths above), so the only thing
-     * left to enforce here is the Filter: cancel the whole drag if it touches the chest's content
-     * area with a disallowed item type.
+     * upgrade's higher cap; that only happens via the single-slot paths above). Two things get
+     * enforced here: the control row (scroll/search/organize/indicator/upgrade slots) never
+     * accepts a drag at all — a click on it is always cancelled (see {@link #onInventoryClick}),
+     * but nothing here checked drags the same way, so a drag pattern landing on, say, the
+     * filler/empty-upgrade-slot glass panes would merge real items onto them uncontested; and the
+     * Filter, same as before, cancels the whole drag if it touches the chest's content area with
+     * a disallowed item type.
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onInventoryDrag(InventoryDragEvent event) {
@@ -394,9 +398,14 @@ public final class ChestGuiListener implements Listener {
         }
         StorageContainer chest = maybeChest.get();
 
-        boolean touchesContent = event.getRawSlots().stream()
-                .anyMatch(rawSlot -> rawSlot < topInventory.getSize() && !GuiFactory.isControlSlot(chest, rawSlot));
-        if (!touchesContent) {
+        List<Integer> topSlotsTouched = event.getRawSlots().stream()
+                .filter(rawSlot -> rawSlot < topInventory.getSize())
+                .toList();
+        if (topSlotsTouched.isEmpty()) {
+            return; // dragged entirely within the player's own inventory below
+        }
+        if (topSlotsTouched.stream().anyMatch(slot -> GuiFactory.isControlSlot(chest, slot))) {
+            event.setCancelled(true);
             return;
         }
 
