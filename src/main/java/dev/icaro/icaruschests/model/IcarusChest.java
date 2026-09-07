@@ -1,6 +1,7 @@
 package dev.icaro.icaruschests.model;
 
 import dev.icaro.icaruschests.tier.ChestTier;
+import dev.icaro.icaruschests.tier.StorageTier;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
@@ -20,7 +21,7 @@ import java.util.UUID;
  * {@link #upgrades} is separate: {@code tier.upgradeSlotCount()} pluggable-
  * upgrade slots, unaffected by doubling.
  */
-public final class IcarusChest {
+public final class IcarusChest implements StorageContainer {
 
     private final UUID id;
     private final ChestLocation location;
@@ -94,5 +95,10 @@ public final class IcarusChest {
 
     public void setDirty(boolean dirty) {
         this.dirty = dirty;
+    }
+
+    @Override
+    public String noun() {
+        return doubled ? "Baú Duplo" : "Baú";
     }
 }

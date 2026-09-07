@@ -1,12 +1,15 @@
 package dev.icaro.icaruschests.listener;
 
+import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.chest.ChestManager;
 import dev.icaro.icaruschests.gui.ControlButton;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.gui.IcarusChestHolder;
 import dev.icaro.icaruschests.gui.NavAction;
 import dev.icaro.icaruschests.gui.SortType;
+import dev.icaro.icaruschests.model.IcarusBackpack;
 import dev.icaro.icaruschests.model.IcarusChest;
+import dev.icaro.icaruschests.model.StorageContainer;
 import dev.icaro.icaruschests.persistence.ChestRepository;
 import dev.icaro.icaruschests.persistence.PersistedUpgrade;
 import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
@@ -91,15 +94,31 @@ import java.util.stream.Collectors;
 public final class ChestGuiListener implements Listener {
 
     private final ChestManager chestManager;
+    private final BackpackManager backpackManager;
     private final ChestRepository chestRepository;
     private final Plugin plugin;
     /** Players with a Search sign currently open — see {@link #openSearchSign}/{@link PendingSearch}. */
     private final Map<UUID, PendingSearch> pendingSearches = new HashMap<>();
 
-    public ChestGuiListener(ChestManager chestManager, ChestRepository chestRepository, Plugin plugin) {
+    public ChestGuiListener(ChestManager chestManager, BackpackManager backpackManager, ChestRepository chestRepository, Plugin plugin) {
         this.chestManager = chestManager;
+        this.backpackManager = backpackManager;
         this.chestRepository = chestRepository;
         this.plugin = plugin;
+    }
+
+    /**
+     * A GUI's {@code chestId} might name either a placed chest or a portable backpack — the same
+     * {@link IcarusChestHolder} serves both (see {@code GuiFactory}) — so every lookup here checks
+     * both managers rather than assuming which kind it is.
+     */
+    private Optional<StorageContainer> resolveContainer(UUID id) {
+        Optional<IcarusChest> chest = chestManager.get(id);
+        if (chest.isPresent()) {
+            return Optional.of(chest.get());
+        }
+        Optional<IcarusBackpack> backpack = backpackManager.get(id);
+        return backpack.isPresent() ? Optional.of(backpack.get()) : Optional.empty();
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -109,11 +128,11 @@ public final class ChestGuiListener implements Listener {
             return;
         }
 
-        Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
         if (maybeChest.isEmpty()) {
             return;
         }
-        IcarusChest chest = maybeChest.get();
+        StorageContainer chest = maybeChest.get();
 
         if (event.getClickedInventory() != topInventory) {
             // A click in the player's OWN inventory — the only one of these that can put a new
@@ -161,7 +180,7 @@ public final class ChestGuiListener implements Listener {
      * IcarusChestHolder#getNextSortType()} to the next {@link SortType}, cycling through all three
      * — see {@code GuiFactory#controlButtonItem} for the lore that names which one is next.
      */
-    private void handleControlButtonClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, ControlButton button) {
+    private void handleControlButtonClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, ControlButton button) {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
@@ -185,7 +204,7 @@ public final class ChestGuiListener implements Listener {
      * off the authoritative array, so a Stack-upgraded slot's true amount (never the display-capped
      * stand-in {@code GuiFactory} hands the client) is what actually gets compared/ordered.
      */
-    private void sortChest(IcarusChest chest, SortType type) {
+    private void sortChest(StorageContainer chest, SortType type) {
         ItemStack[] contents = chest.getContents();
         List<ItemStack> items = new ArrayList<>(contents.length);
         for (ItemStack item : contents) {
@@ -235,7 +254,7 @@ public final class ChestGuiListener implements Listener {
      * stuck as a sign forever, and from having the *next* real sign they edit anywhere get silently
      * hijacked as a leftover search query.
      */
-    private void openSearchSign(Player player, IcarusChest chest) {
+    private void openSearchSign(Player player, StorageContainer chest) {
         UUID playerId = player.getUniqueId();
         player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
 
@@ -272,11 +291,11 @@ public final class ChestGuiListener implements Listener {
         }
         event.setCancelled(true); // this sign was only ever temporary — never let the edit actually save
         pending.block().setBlockData(pending.originalData(), false);
-        Optional<IcarusChest> maybeChest = chestManager.get(pending.chestId());
+        Optional<StorageContainer> maybeChest = resolveContainer(pending.chestId());
         if (maybeChest.isEmpty()) {
             return;
         }
-        IcarusChest chest = maybeChest.get();
+        StorageContainer chest = maybeChest.get();
         String query = (nullToEmpty(event.getLine(0)) + " " + nullToEmpty(event.getLine(1)) + " "
                 + nullToEmpty(event.getLine(2)) + " " + nullToEmpty(event.getLine(3))).trim();
         if (!query.isEmpty()) {
@@ -295,7 +314,7 @@ public final class ChestGuiListener implements Listener {
      * relative order (a stable partition), then reopens the GUI scrolled to the top where they now
      * are. Does nothing if nothing matches, rather than needlessly shuffling the chest.
      */
-    private void performSearch(IcarusChest chest, String query) {
+    private void performSearch(StorageContainer chest, String query) {
         String queryLower = query.toLowerCase(Locale.ROOT);
         ItemStack[] contents = chest.getContents();
         List<ItemStack> matches = new ArrayList<>();
@@ -361,11 +380,11 @@ public final class ChestGuiListener implements Listener {
         if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
-        Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
         if (maybeChest.isEmpty()) {
             return;
         }
-        IcarusChest chest = maybeChest.get();
+        StorageContainer chest = maybeChest.get();
 
         boolean touchesContent = event.getRawSlots().stream()
                 .anyMatch(rawSlot -> rawSlot < topInventory.getSize() && !GuiFactory.isControlSlot(chest, rawSlot));
@@ -381,7 +400,7 @@ public final class ChestGuiListener implements Listener {
         });
     }
 
-    private void handleNavClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, Inventory topInventory) {
+    private void handleNavClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, Inventory topInventory) {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
@@ -392,7 +411,7 @@ public final class ChestGuiListener implements Listener {
         scroll(player, chest, holder, topInventory, action.get());
     }
 
-    private void scroll(Player player, IcarusChest chest, IcarusChestHolder holder, Inventory topInventory, NavAction action) {
+    private void scroll(Player player, StorageContainer chest, IcarusChestHolder holder, Inventory topInventory, NavAction action) {
         int newOffset = GuiFactory.scrollTarget(chest, holder.getScrollOffset(), action);
         if (newOffset == holder.getScrollOffset()) {
             return; // already at that edge
@@ -401,7 +420,7 @@ public final class ChestGuiListener implements Listener {
         GuiFactory.scrollTo(chest, holder, topInventory, newOffset);
     }
 
-    private void handleUpgradeSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest, int slotIndex) {
+    private void handleUpgradeSlotClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, int slotIndex) {
         // Installing/removing an upgrade always ends in a full populate() (below), which redraws
         // every content slot straight from chest.getContents() — flush the *current* live view into
         // that array first, or an item the player just picked up from some other content slot a
@@ -451,7 +470,7 @@ public final class ChestGuiListener implements Listener {
     }
 
     /** Stored items that would exceed their own normal stack limit under {@code multiplier} — used to guard removing a Stack upgrade. */
-    private List<ItemStack> itemsOverCap(IcarusChest chest, double multiplier) {
+    private List<ItemStack> itemsOverCap(StorageContainer chest, double multiplier) {
         List<ItemStack> blocking = new ArrayList<>();
         for (ItemStack item : chest.getContents()) {
             if (item == null || item.getType() == Material.AIR) {
@@ -473,7 +492,7 @@ public final class ChestGuiListener implements Listener {
                 NamedTextColor.RED);
     }
 
-    private void persistUpgrades(IcarusChest chest) {
+    private void persistUpgrades(StorageContainer chest) {
         Map<Integer, PersistedUpgrade> bySlot = new HashMap<>();
         ItemStack[] upgrades = chest.getUpgrades();
         for (int i = 0; i < upgrades.length; i++) {
@@ -508,7 +527,7 @@ public final class ChestGuiListener implements Listener {
      * array's stale pre-pickup value, making that other item reappear in the chest while the player
      * also keeps the copy they already picked up — a duplicate.
      */
-    private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
+    private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest) {
         Inventory topInventory = event.getView().getTopInventory();
         GuiFactory.syncVisibleToChest(chest, holder, topInventory);
         int globalIndex = holder.getScrollOffset() + event.getSlot();
@@ -620,7 +639,7 @@ public final class ChestGuiListener implements Listener {
      * landed is removed from the chest, so nothing is ever lost to a full inventory.
      */
     private void handleOverstackedShiftWithdraw(InventoryClickEvent event, IcarusChestHolder holder,
-                                                 IcarusChest chest, int globalIndex, ItemStack slotItem) {
+                                                 StorageContainer chest, int globalIndex, ItemStack slotItem) {
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
@@ -644,7 +663,7 @@ public final class ChestGuiListener implements Listener {
      * own "find a slot for this" logic, which knows nothing about the Filter or a Stack upgrade's
      * higher cap — so when either is active, this takes over that distribution by hand instead.
      */
-    private void handleShiftDeposit(InventoryClickEvent event, IcarusChestHolder holder, IcarusChest chest) {
+    private void handleShiftDeposit(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest) {
         double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
         boolean stackUpgraded = stackMultiplier > 1.0;
         Optional<ItemStack> filterItem = UpgradeSlots.filterItem(chest.getUpgrades());
@@ -736,7 +755,7 @@ public final class ChestGuiListener implements Listener {
         if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
-        Optional<IcarusChest> maybeChest = chestManager.get(holder.getChestId());
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
         if (maybeChest.isEmpty()) {
             return;
         }
@@ -760,7 +779,7 @@ public final class ChestGuiListener implements Listener {
         if (!(event.getInventory().getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
-        chestManager.get(holder.getChestId())
+        resolveContainer(holder.getChestId())
                 .ifPresent(chest -> GuiFactory.syncVisibleToChest(chest, holder, event.getInventory()));
     }
 }
