@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-2.1.0-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-2.1.1-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -23,7 +23,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
   - Rolagem quando a capacidade passa de 45 slots (sem paginar — a mesma janela desliza).
   - 🔎 **Buscar** — abre uma placa pra digitar o nome de um item (funciona em português e inglês) e traz os resultados pro topo.
   - ⚙ **Organizar** — alterna entre 3 modos de ordenação com um clique, sem abrir outro menu.
-- **Mochilas portáteis** — a mesma experiência de armazenamento, só que carregada no inventário. Craftável, evoluível de tier mantendo o conteúdo, com os mesmos upgrades de Filtro/Stack. O tooltip mostra um preview de verdade do que está guardado dentro, e dá pra colorir craftando a mochila junto com qualquer corante (preserva conteúdo e tier — muda só a cor).
+- **Mochilas portáteis** — a mesma experiência de armazenamento, só que carregada no inventário. Craftável, evoluível de tier mantendo o conteúdo, com os mesmos upgrades de Filtro/Stack. A lore mostra um resumo em texto do que está guardado dentro (nomes e quantidades — nunca um item de verdade no próprio saquinho, pra não abrir brecha de duplicação com o mecanismo nativo de Bundle), e dá pra colorir craftando a mochila junto com qualquer corante (preserva conteúdo e tier — muda só a cor).
 - **Compatível com Bedrock** (via Geyser/Floodgate): texturas de cabeça customizadas exportadas automaticamente pro Geyser, e um ajuste fino pra contornar como o cliente Bedrock valida stacks localmente.
 - **Livro de Receitas** in-game — todo item craftável do plugin tem uma página mostrando exatamente como fazer.
 - **Persistência em SQLite** (não YAML), assíncrona, com autosave periódico e migrações versionadas — nunca perde dado num update.

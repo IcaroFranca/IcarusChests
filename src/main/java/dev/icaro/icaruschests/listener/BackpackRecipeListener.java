@@ -243,7 +243,8 @@ public final class BackpackRecipeListener implements Listener {
         ItemStack toRecolor = backpackItem;
         return bundleMaterialFor(chosenColor).map(material -> {
             ItemStack recolored = toRecolor.clone();
-            recolored.setType(material); // BundleMeta carries over unchanged across every bundle color — id/tier/preview all survive
+            recolored.setType(material); // BundleMeta carries over unchanged across every bundle color — id/tier/lore all survive
+            backpackRegistry.sanitize(recolored); // belt-and-suspenders: strip any real bundle contents a not-yet-sanitized backpack might still carry
             return recolored;
         });
     }
@@ -304,7 +305,7 @@ public final class BackpackRecipeListener implements Listener {
             // bumpTierIfCached) — otherwise there's no in-memory contents to preview from yet, and
             // the next real open/close cycle fills the preview in normally.
             backpackManager.get(id.get()).ifPresent(cached -> {
-                backpackRegistry.refreshPreview(result, cached.getContents());
+                backpackRegistry.refreshPreview(result, cached.getTier(), cached.getContents());
                 event.setCurrentItem(result);
             });
             chestRepository.updateBackpackTier(id.get(), tier.get().ordinal()).exceptionally(ex -> {

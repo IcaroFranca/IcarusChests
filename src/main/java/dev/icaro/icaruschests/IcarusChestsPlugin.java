@@ -53,6 +53,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private BackpackManager backpackManager;
     private BackpackRegistry backpackRegistry;
     private BackpackRecipeListener backpackRecipeListener;
+    private BackpackInteractListener backpackInteractListener;
     private ConfigManager configManager;
     private AutosaveTask autosaveTask;
     private BukkitTask autosaveTaskHandle;
@@ -84,6 +85,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         chestManager = new ChestManager(chestRepository, upgradeRegistry, this);
         backpackManager = new BackpackManager(chestRepository, upgradeRegistry, this);
         backpackRecipeListener = new BackpackRecipeListener(this, backpackRegistry, backpackManager, chestRepository);
+        backpackInteractListener = new BackpackInteractListener(backpackManager, backpackRegistry);
         autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger());
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
@@ -98,6 +100,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         upgradeKitRegistry.registerRecipes();
         upgradeRegistry.registerRecipes();
         backpackRecipeListener.registerRecipes();
+        sanitizeOnlinePlayersBackpacks();
 
         getLogger().info("IcarusChests habilitado (v" + getPluginMeta().getVersion() + ").");
     }
@@ -170,8 +173,21 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
         pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);
         pluginManager.registerEvents(new SpecialItemProtectionListener(), this);
-        pluginManager.registerEvents(new BackpackInteractListener(backpackManager), this);
+        pluginManager.registerEvents(backpackInteractListener, this);
         pluginManager.registerEvents(backpackRecipeListener, this);
+    }
+
+    /**
+     * Retroactive fix for a duplication bug in an earlier version (see {@code
+     * BackpackInteractListener}'s own Javadoc): a player already online when this fix is deployed
+     * (a {@code /reload}, or a plugin update applied without a full server restart) would otherwise
+     * never trigger {@code BackpackInteractListener#onJoin} at all, so this runs the exact same
+     * sweep manually for whoever's already connected the moment the fixed version comes up.
+     */
+    private void sanitizeOnlinePlayersBackpacks() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            backpackInteractListener.sanitizeInventory(player);
+        }
     }
 
     public ChestManager getChestManager() {
