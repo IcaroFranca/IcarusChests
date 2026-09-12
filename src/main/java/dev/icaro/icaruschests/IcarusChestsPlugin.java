@@ -5,6 +5,7 @@ import dev.icaro.icaruschests.chest.AutosaveTask;
 import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.chest.ChestDestructionHandler;
 import dev.icaro.icaruschests.chest.ChestManager;
+import dev.icaro.icaruschests.chest.ChestTaggingService;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
 import dev.icaro.icaruschests.config.ConfigManager;
 import dev.icaro.icaruschests.gui.GuiFactory;
@@ -19,6 +20,7 @@ import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
 import dev.icaro.icaruschests.listener.ChunkListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
+import dev.icaro.icaruschests.listener.NaturalChestListener;
 import dev.icaro.icaruschests.listener.RecipeBookListener;
 import dev.icaro.icaruschests.listener.SpecialItemProtectionListener;
 import dev.icaro.icaruschests.listener.UpgradeRecipeValidationListener;
@@ -63,6 +65,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
     private RecipeBookRegistry recipeBookRegistry;
     private TierUpgradeService tierUpgradeService;
     private ChestDestructionHandler destructionHandler;
+    private ChestTaggingService chestTaggingService;
 
     @Override
     public void onEnable() {
@@ -90,6 +93,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger(), this);
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
+        chestTaggingService = new ChestTaggingService(chestManager, chestRepository, this);
 
         // Commands/listeners are registered before recipes: recipe registration reaches out to
         // config.yml-driven custom head textures and is the riskiest step here, and each recipe
@@ -164,12 +168,13 @@ public final class IcarusChestsPlugin extends JavaPlugin {
 
     private void registerListeners() {
         PluginManager pluginManager = getServer().getPluginManager();
-        pluginManager.registerEvents(new ChestPlaceListener(chestManager, chestRepository, this), this);
+        pluginManager.registerEvents(new ChestPlaceListener(chestTaggingService), this);
         pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler, chestRepository, this), this);
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager, backpackManager, backpackRegistry, chestRepository, this), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
         pluginManager.registerEvents(new ChunkListener(chestManager), this);
+        pluginManager.registerEvents(new NaturalChestListener(chestManager, chestTaggingService), this);
         pluginManager.registerEvents(new FilterConfigListener(), this);
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
         pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);
