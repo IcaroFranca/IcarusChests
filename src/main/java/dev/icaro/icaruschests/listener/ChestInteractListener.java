@@ -56,6 +56,15 @@ public final class ChestInteractListener implements Listener {
             // a no-op wait except right after a fresh server start (see ChestManager's docs); this
             // is what stops a same-tick GUI open or kit application from racing that async load.
             chestManager.whenReady(chest.getId(), () -> {
+                if (chest.isContentsLoadFailed()) {
+                    // The saved contents couldn't be read back (see StorageContainer's docs) — this
+                    // chest is locked out of the GUI and out of kit upgrades entirely rather than
+                    // letting anyone treat its blank placeholder array as real, empty contents.
+                    player.sendMessage(Component.text(
+                            "Este bau nao pode ser aberto: houve um erro ao carregar seu conteudo salvo. "
+                                    + "Nada foi apagado; chame um administrador.", NamedTextColor.RED));
+                    return;
+                }
                 if (player.isSneaking() && UpgradeKitRegistry.targetTierOf(inHand).isPresent()) {
                     handleUpgradeAttempt(player, chest, inHand);
                     return;

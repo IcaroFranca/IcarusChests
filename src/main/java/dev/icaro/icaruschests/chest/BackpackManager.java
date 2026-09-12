@@ -151,8 +151,15 @@ public final class BackpackManager {
                         ? runOnMainThread(() -> backpack.setContents(loaded.get()))
                         : CompletableFuture.<Void>completedFuture(null))
                 .exceptionally(ex -> {
-                    plugin.getLogger().log(Level.WARNING,
-                            "Falha ao carregar conteudo persistido da mochila " + backpack.getId(), ex);
+                    // SEVERE, not WARNING, and marked load-failed (see StorageContainer's docs):
+                    // silently treating this as "loaded, just empty" would let a normal save
+                    // overwrite the still-recoverable corrupted SQLite blob with actual emptiness.
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Falha ao carregar conteudo persistido da mochila " + backpack.getId()
+                                    + " — a mochila ficará bloqueada (nunca abre, nunca salva) ate isso ser investigado.", ex);
+                    // Scheduled on the main thread: this callback runs on the DB executor thread,
+                    // same reasoning as ChestManager's identical fix.
+                    Bukkit.getScheduler().runTask(plugin, () -> backpack.setContentsLoadFailed(true));
                     return null;
                 });
     }

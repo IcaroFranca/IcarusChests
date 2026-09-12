@@ -3,6 +3,8 @@ package dev.icaro.icaruschests.listener;
 import dev.icaro.icaruschests.chest.BackpackManager;
 import dev.icaro.icaruschests.gui.GuiFactory;
 import dev.icaro.icaruschests.model.IcarusBackpack;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -104,6 +106,17 @@ public final class BackpackInteractListener implements Listener {
         IcarusBackpack backpack = maybeBackpack.get();
         // First touch after a server restart may still be hydrating from SQLite — see
         // BackpackManager#whenReady; every other time this runs immediately.
-        backpackManager.whenReady(backpack.getId(), () -> GuiFactory.open(player, backpack));
+        backpackManager.whenReady(backpack.getId(), () -> {
+            if (backpack.isContentsLoadFailed()) {
+                // The saved contents couldn't be read back (see StorageContainer's docs) — refusing
+                // to open keeps anyone from treating the blank placeholder array as real, empty
+                // contents (which a later save would then make permanent).
+                player.sendMessage(Component.text(
+                        "Esta mochila nao pode ser aberta: houve um erro ao carregar seu conteudo salvo. "
+                                + "Nada foi apagado; chame um administrador.", NamedTextColor.RED));
+                return;
+            }
+            GuiFactory.open(player, backpack);
+        });
     }
 }

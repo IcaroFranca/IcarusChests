@@ -248,8 +248,16 @@ public final class ChestManager {
                         ? runOnMainThread(() -> chest.setContents(loaded.get()))
                         : CompletableFuture.<Void>completedFuture(null))
                 .exceptionally(ex -> {
-                    plugin.getLogger().log(Level.WARNING,
-                            "Falha ao carregar conteudo persistido do bau " + chest.getId(), ex);
+                    // SEVERE, not WARNING: this chest's real contents are now stuck in a SQLite blob
+                    // this build can't read back — silently treating it as "loaded, just empty"
+                    // would let a normal save overwrite that blob with actual emptiness for good.
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Falha ao carregar conteudo persistido do bau " + chest.getId() + " em " + chest.getLocation()
+                                    + " — o baú ficará bloqueado (nunca abre, nunca salva) ate isso ser investigado.", ex);
+                    // Scheduled on the main thread rather than set directly here: this callback runs
+                    // on whatever thread completed the failed future, i.e. the DB executor thread —
+                    // see AutosaveTask's own docs on why every StorageContainer field is main-thread-only.
+                    Bukkit.getScheduler().runTask(plugin, () -> chest.setContentsLoadFailed(true));
                     return null;
                 });
     }

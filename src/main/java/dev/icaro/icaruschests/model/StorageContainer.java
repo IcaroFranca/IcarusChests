@@ -38,6 +38,20 @@ public interface StorageContainer {
 
     void setDirty(boolean dirty);
 
+    /**
+     * Set once, permanently, if {@link #setContents} was never called because SQLite's stored blob
+     * couldn't be deserialized (corrupted row, incompatible format after a downgrade, etc.) — see
+     * {@code ChestManager}/{@code BackpackManager}'s {@code hydrateContentsAsync}. A container in
+     * this state keeps whatever blank placeholder array it started with, and every caller that
+     * would read, mutate, or persist it (GUI open, tier-upgrade application, {@code AutosaveTask})
+     * must check this first and refuse instead — treating the blank placeholder as real, empty
+     * contents would let a normal save silently overwrite the still-recoverable corrupted row in
+     * SQLite with actual (wrong) emptiness, destroying it for good.
+     */
+    boolean isContentsLoadFailed();
+
+    void setContentsLoadFailed(boolean failed);
+
     /** The noun the GUI title ends with, e.g. {@code "Baú"}/{@code "Baú Duplo"} for a chest, {@code "Mochila"} for a backpack. */
     String noun();
 }

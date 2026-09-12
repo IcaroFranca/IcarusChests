@@ -17,6 +17,7 @@ import dev.icaro.icaruschests.listener.ChestGuiListener;
 import dev.icaro.icaruschests.listener.ChestInteractListener;
 import dev.icaro.icaruschests.listener.ChestPlaceListener;
 import dev.icaro.icaruschests.listener.ChestProtectionListener;
+import dev.icaro.icaruschests.listener.ChunkListener;
 import dev.icaro.icaruschests.listener.FilterConfigListener;
 import dev.icaro.icaruschests.listener.RecipeBookListener;
 import dev.icaro.icaruschests.listener.SpecialItemProtectionListener;
@@ -86,7 +87,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         backpackManager = new BackpackManager(chestRepository, upgradeRegistry, this);
         backpackRecipeListener = new BackpackRecipeListener(this, backpackRegistry, backpackManager, chestRepository);
         backpackInteractListener = new BackpackInteractListener(backpackManager);
-        autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger());
+        autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger(), this);
         destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, this);
         tierUpgradeService = new TierUpgradeService(chestRepository, this);
 
@@ -168,6 +169,7 @@ public final class IcarusChestsPlugin extends JavaPlugin {
         pluginManager.registerEvents(new ChestInteractListener(chestManager, tierUpgradeService), this);
         pluginManager.registerEvents(new ChestGuiListener(chestManager, backpackManager, backpackRegistry, chestRepository, this), this);
         pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
+        pluginManager.registerEvents(new ChunkListener(chestManager), this);
         pluginManager.registerEvents(new FilterConfigListener(), this);
         pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
         pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);

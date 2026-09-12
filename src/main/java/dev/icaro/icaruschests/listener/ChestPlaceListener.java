@@ -102,6 +102,16 @@ public final class ChestPlaceListener implements Listener {
                 NamespacedKeys.LINK_TARGET, PersistentDataType.STRING, primary.getLocation().encode());
         state.update(true);
 
+        // Deferred until the primary's own async hydration (if any is still in flight — its very
+        // first touch since a server restart, via the getOrLoadFromBlock call in
+        // findAdjacentPrimary) finishes: doing this resize immediately could otherwise race
+        // hydrateContentsAsync's own main-thread chest.setContents(loaded) completing a moment
+        // later and silently overwriting this doubled array with the still-single-sized one it
+        // loaded from disk. See ChestManager's docs on whenReady.
+        chestManager.whenReady(primary.getId(), () -> doubleCapacity(primary));
+    }
+
+    private void doubleCapacity(IcarusChest primary) {
         // Doubling only ever grows the array, so this copyOf can't lose data —
         // unlike unlinking (ChestBreakListener), which must drop overflow first.
         int doubledCapacity = primary.getTier().totalCapacity() * 2;
