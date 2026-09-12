@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-2.2.1-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-2.3.0-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -25,7 +25,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
   - ⚙ **Organizar** — alterna entre 3 modos de ordenação com um clique, sem abrir outro menu.
 - **Mochilas portáteis** — a mesma experiência de armazenamento, só que carregada no inventário. Craftável, evoluível de tier mantendo o conteúdo, com os mesmos upgrades de Filtro/Stack. O tooltip mostra um preview de verdade do que está guardado dentro (protegido: clique direito no item é bloqueado em qualquer inventário, então o mecanismo nativo de inserir/retirar do Bundle nunca é acionado), e dá pra colorir craftando a mochila junto com qualquer corante (preserva conteúdo e tier — muda só a cor).
 - **Compatível com Bedrock** (via Geyser/Floodgate): texturas de cabeça customizadas exportadas automaticamente pro Geyser, e um ajuste fino pra contornar como o cliente Bedrock valida stacks localmente.
-- **Livro de Receitas** in-game — todo item craftável do plugin tem uma página mostrando exatamente como fazer.
+- **Livro de Receitas** in-game — um menu mostra o ícone de toda receita do plugin de uma vez; clique em qualquer item pra ver exatamente como craftar.
 - **Persistência em SQLite** (não YAML), assíncrona, com autosave periódico e migrações versionadas — nunca perde dado num update.
 
 ## 🧱 Progressão dos baús
@@ -60,7 +60,7 @@ Segurar a mochila e clicar (qualquer clique — direito, esquerdo, no ar, num bl
 |---|---|---|
 | `/icaruschests` (ou `/icaruschests ping`) | Checagem rápida — confirma que o plugin está online. | — |
 | `/icaruschests info` | Mostra tier, capacidade e id do baú mirado. | `icaruschests.info` (padrão: todos) |
-| `/icaruschests recipebook` | Entrega o Livro de Receitas. | `icaruschests.recipebook` (padrão: todos) |
+| `/icaruschests recipebook` | Abre o menu do Livro de Receitas. | `icaruschests.recipebook` (padrão: todos) |
 | `/icaruschests give <tier> [jogador]` | Entrega um kit de upgrade de um tier. | `icaruschests.admin` (padrão: op) |
 | `/icaruschests reload` | Recarrega `config.yml` sem reiniciar o servidor. | `icaruschests.admin` (padrão: op) |
 

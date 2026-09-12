@@ -20,5 +20,5 @@ permissions:
     description: Acesso aos comandos administrativos do IcarusChests (give, reload).
     default: op
   icaruschests.recipebook:
-    description: Permite usar /icaruschests recipebook para pegar o Livro de Receitas.
+    description: Permite usar /icaruschests recipebook para abrir o Livro de Receitas.
     default: true
