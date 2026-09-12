@@ -43,11 +43,11 @@ public final class NamespacedKeys {
     /** Tag on a Filter upgrade item's PDC: comma-separated {@code Material} names it accepts. Absent/empty means it accepts anything. */
     public static NamespacedKey FILTER_ITEMS;
 
-    /** Marker tag on the Recipe Book item's PDC — present (value irrelevant) means "this is the recipe book". */
-    public static NamespacedKey RECIPE_BOOK;
-
-    /** Tag on a recipe book navigation button's PDC: {@code "prev"} or {@code "next"}. */
+    /** Tag on the recipe detail screen's "back to index" button's PDC: always {@code "back"} when present. */
     public static NamespacedKey RECIPE_NAV;
+
+    /** Tag on a recipe index screen's icon PDC identifying which built {@code RecipeBookEntry} (by list position) it opens. */
+    public static NamespacedKey RECIPE_ENTRY_INDEX;
 
     /** Tag on a chest GUI's control-row Search/Organize button's PDC: {@code "search"} or {@code "organize"}. */
     public static NamespacedKey CONTROL_BUTTON;
@@ -67,8 +67,8 @@ public final class NamespacedKeys {
         DOUBLED = new NamespacedKey(plugin, "doubled");
         UPGRADE_TYPE = new NamespacedKey(plugin, "upgrade_type");
         FILTER_ITEMS = new NamespacedKey(plugin, "filter_items");
-        RECIPE_BOOK = new NamespacedKey(plugin, "recipe_book");
         RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
+        RECIPE_ENTRY_INDEX = new NamespacedKey(plugin, "recipe_entry_index");
         CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
         BACKPACK_ID = new NamespacedKey(plugin, "backpack_id");
         BACKPACK_TIER = new NamespacedKey(plugin, "backpack_tier");

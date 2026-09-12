@@ -4,19 +4,10 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.jetbrains.annotations.NotNull;
 
-/** Holder for the read-only, paginated recipe book GUI (see {@code RecipeBookGui}/{@code RecipeBookListener}). */
-public final class RecipeBookHolder implements InventoryHolder {
+/** Holder for the read-only recipe index GUI (see {@code RecipeBookIndexGui}/{@code RecipeBookListener}). */
+public final class RecipeBookIndexHolder implements InventoryHolder {
 
-    private int page;
     private Inventory inventory;
-
-    public int getPage() {
-        return page;
-    }
-
-    public void setPage(int page) {
-        this.page = page;
-    }
 
     void setInventory(Inventory inventory) {
         this.inventory = inventory;

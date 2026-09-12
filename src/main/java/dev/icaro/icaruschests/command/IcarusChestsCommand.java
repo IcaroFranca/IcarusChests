@@ -2,6 +2,7 @@ package dev.icaro.icaruschests.command;
 
 import dev.icaro.icaruschests.IcarusChestsPlugin;
 import dev.icaro.icaruschests.gui.GuiFactory;
+import dev.icaro.icaruschests.gui.RecipeBookIndexGui;
 import dev.icaro.icaruschests.gui.RecipeBookRegistry;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
@@ -27,8 +28,8 @@ import java.util.Optional;
 /**
  * Root command for IcarusChests: {@code ping} (health check), {@code info}
  * (debug: reports the tier of the chest the player is looking at), {@code
- * recipebook} (hands over the Recipe Book item — see {@code
- * RecipeBookRegistry}), and the admin-only {@code give}/{@code reload}.
+ * recipebook} (opens the Recipe Book menu directly — see {@code
+ * RecipeBookIndexGui}), and the admin-only {@code give}/{@code reload}.
  */
 public final class IcarusChestsCommand implements CommandExecutor, TabCompleter {
 
@@ -154,8 +155,8 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             return true; // resolveTarget already messaged the sender
         }
 
-        giveOrDrop(sender, target.get(), RecipeBookRegistry.createBookItem());
-        sender.sendMessage(Component.text("Livro de Receitas entregue a " + target.get().getName() + ".", NamedTextColor.GREEN));
+        target.get().openInventory(RecipeBookIndexGui.open(recipeBookRegistry.buildAll()));
+        sender.sendMessage(Component.text("Livro de Receitas aberto para " + target.get().getName() + ".", NamedTextColor.GREEN));
         return true;
     }
 
