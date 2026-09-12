@@ -15,11 +15,13 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -135,7 +137,7 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             return true;
         }
 
-        target.getInventory().addItem(upgradeKitRegistry.createKit(tier.get()));
+        giveOrDrop(sender, target, upgradeKitRegistry.createKit(tier.get()));
         sender.sendMessage(Component.text("Kit de upgrade (" + tier.get().displayName() + ") entregue a "
                 + target.getName() + ".", NamedTextColor.GREEN));
         return true;
@@ -152,9 +154,28 @@ public final class IcarusChestsCommand implements CommandExecutor, TabCompleter 
             return true; // resolveTarget already messaged the sender
         }
 
-        target.get().getInventory().addItem(RecipeBookRegistry.createBookItem());
+        giveOrDrop(sender, target.get(), RecipeBookRegistry.createBookItem());
         sender.sendMessage(Component.text("Livro de Receitas entregue a " + target.get().getName() + ".", NamedTextColor.GREEN));
         return true;
+    }
+
+    /**
+     * {@code Inventory#addItem} silently drops whatever doesn't fit — its return value is the only
+     * way to find out, and both {@code give} and {@code recipebook} used to ignore it entirely,
+     * sending a "delivered" message even when the target's inventory was full and the item vanished
+     * outright. Whatever doesn't fit is dropped at the target's feet instead, so nothing is ever
+     * lost — same "never lose an item" reasoning {@code ChestDestructionHandler} already applies to
+     * a broken chest's overflow.
+     */
+    private void giveOrDrop(CommandSender sender, Player target, ItemStack item) {
+        Map<Integer, ItemStack> notAdded = target.getInventory().addItem(item);
+        if (!notAdded.isEmpty()) {
+            for (ItemStack leftover : notAdded.values()) {
+                target.getWorld().dropItemNaturally(target.getLocation(), leftover);
+            }
+            sender.sendMessage(Component.text("Inventario de " + target.getName()
+                    + " estava cheio; o item foi jogado no chao aos pes dele.", NamedTextColor.YELLOW));
+        }
     }
 
     /** {@code args[argIndex]} if present, else {@code sender} itself (must be a player). Messages the sender and returns empty on failure. */

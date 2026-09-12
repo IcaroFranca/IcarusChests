@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-2.2.0-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-2.2.1-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)

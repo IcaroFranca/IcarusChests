@@ -30,6 +30,7 @@ public final class IcarusChest implements StorageContainer {
     private ItemStack[] contents;
     private ItemStack[] upgrades;
     private boolean dirty;
+    private boolean contentsLoadFailed;
 
     public IcarusChest(UUID id, ChestLocation location, ChestTier tier) {
         this.id = id;
@@ -95,6 +96,16 @@ public final class IcarusChest implements StorageContainer {
 
     public void setDirty(boolean dirty) {
         this.dirty = dirty;
+    }
+
+    @Override
+    public boolean isContentsLoadFailed() {
+        return contentsLoadFailed;
+    }
+
+    @Override
+    public void setContentsLoadFailed(boolean failed) {
+        this.contentsLoadFailed = failed;
     }
 
     @Override
