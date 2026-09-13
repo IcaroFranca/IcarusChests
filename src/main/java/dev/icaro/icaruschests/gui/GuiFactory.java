@@ -139,6 +139,23 @@ public final class GuiFactory {
         }
     }
 
+    /**
+     * Flushes any currently-open GUI's live view back into {@code chest}'s own array first — see
+     * {@link #syncVisibleToChest} — for a caller that's about to mutate the array directly from
+     * outside any click handler (see {@code ChestHopperListener}). Without this, a hopper landing
+     * between two clicks of an open session could insert against a stale array (the live view can
+     * lag the array by up to one not-yet-synced click — see {@code ChestGuiListener
+     * #handleContentSlotClick}'s own docs on the exact same hazard), and the {@link #refreshIfOpen}
+     * that follows would then repaint the visible window from that same stale array, silently
+     * reverting whatever the viewer had just done. A no-op if nobody's viewing it right now.
+     */
+    public static void syncIfOpen(StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null && existing.getHolder() instanceof IcarusChestHolder holder) {
+            syncVisibleToChest(chest, holder, existing);
+        }
+    }
+
     public static Inventory build(StorageContainer chest, int scrollOffset) {
         int capacity = chest.effectiveTotalCapacity();
         IcarusChestHolder holder = new IcarusChestHolder(chest.getId(), chest.getTier());
