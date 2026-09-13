@@ -125,6 +125,20 @@ public final class GuiFactory {
         }
     }
 
+    /**
+     * Redraws {@code chest}'s shared GUI in place if anyone currently has it open — e.g. right
+     * after a hopper feeds it from outside any GUI session (see {@code ChestHopperListener}), so a
+     * player already looking at it sees the new item land immediately instead of only on their
+     * next open/scroll. A no-op if nobody's viewing it right now; the next {@link #open} builds
+     * fresh from {@code chest.getContents()} either way.
+     */
+    public static void refreshIfOpen(StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null && existing.getHolder() instanceof IcarusChestHolder holder) {
+            populate(chest, holder, existing);
+        }
+    }
+
     public static Inventory build(StorageContainer chest, int scrollOffset) {
         int capacity = chest.effectiveTotalCapacity();
         IcarusChestHolder holder = new IcarusChestHolder(chest.getId(), chest.getTier());

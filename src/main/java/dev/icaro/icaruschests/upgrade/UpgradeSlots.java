@@ -63,4 +63,50 @@ public final class UpgradeSlots {
         }
         return Optional.empty();
     }
+
+    /**
+     * Inserts as much of {@code incoming} as fits into {@code contents}, respecting {@code
+     * stackMultiplier} (see {@link #bestStackMultiplier}) — first topping off any existing
+     * matching stack up to its capped size, then filling empty slots at that same cap. Shared by
+     * {@code ChestGuiListener#handleShiftDeposit} (a shift-click deposit) and {@code
+     * ChestHopperListener} (a hopper feeding the chest from outside any GUI) so the one rule for
+     * "how much of this item can a Stack-upgraded container take right now" never drifts between
+     * the two.
+     *
+     * <p>Deliberately does not check a Filter upgrade at all — callers that care check it
+     * themselves before calling this, since what "rejected" should do differs by caller (e.g.
+     * cancelling a click outright vs. simply leaving a hopper's item where it is for a later
+     * retry). Mutates {@code contents} in place; returns how much of {@code incoming} was actually
+     * inserted — 0 if every matching slot and every empty slot is already at cap.
+     */
+    public static int insertRespectingStackCap(ItemStack[] contents, double stackMultiplier, ItemStack incoming) {
+        int remaining = incoming.getAmount();
+        for (int i = 0; i < contents.length && remaining > 0; i++) {
+            ItemStack existing = contents[i];
+            if (existing != null && existing.isSimilar(incoming)) {
+                int cap = (int) Math.floor(existing.getMaxStackSize() * stackMultiplier);
+                int space = cap - existing.getAmount();
+                if (space > 0) {
+                    int toMove = Math.min(space, remaining);
+                    existing.setAmount(existing.getAmount() + toMove);
+                    remaining -= toMove;
+                }
+            }
+        }
+        int emptySlotCap = (int) Math.floor(incoming.getMaxStackSize() * stackMultiplier);
+        for (int i = 0; i < contents.length && remaining > 0; i++) {
+            if (contents[i] == null) {
+                int toMove = Math.min(emptySlotCap, remaining);
+                contents[i] = withAmount(incoming, toMove);
+                remaining -= toMove;
+            }
+        }
+        return incoming.getAmount() - remaining;
+    }
+
+    private static ItemStack withAmount(ItemStack base, int amount) {
+        ItemStack copy = base.clone();
+        copy.setAmount(amount);
+        return copy;
+    }
 }

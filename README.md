@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-4.0.0-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-5.0.0-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -20,6 +20,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
 - **Upgrades encaixáveis**, instalados direto na GUI do baú:
   - 🔍 **Filtro** — restringe quais itens o baú aceita.
   - 📦 **Stack** — deixa um slot acumular muito além do limite normal do item (até 16x no tier Netherite), com a quantidade real sempre visível na lore.
+- **Hopper alimenta o baú** — um hopper (ou hopper minecart, ou um dropper jogando num hopper) embaixo/ao lado de um baú com tier consegue empurrar itens pra dentro dele normalmente, respeitando Filtro e o limite do Stack instalado. Puxar itens de dentro do baú com hopper continua não suportado (decisão deliberada, não uma falta de implementação).
 - **Barra de controle** embutida em todo baú/mochila:
   - Rolagem quando a capacidade passa de 45 slots (sem paginar — a mesma janela desliza).
   - 🔎 **Buscar** — abre uma placa pra digitar o nome de um item (funciona em português e inglês) e traz os resultados pro topo.
@@ -114,7 +115,7 @@ Baú e mochila implementam a mesma interface (`StorageContainer`/`StorageTier`):
 
 ## 📋 Limitações conhecidas
 
-- Hoppers não automatizam baús com tier (o inventário vanilla do bloco fica sempre vazio de propósito).
+- Hoppers só automatizam a entrada de itens num baú com tier, nunca a saída — puxar itens de dentro dele com hopper continua bloqueado (o inventário vanilla do bloco fica sempre vazio de propósito).
 - Stacks acima do limite normal (upgrade Stack) não existem no protocolo do Bedrock — o cliente Bedrock vê o limite normal do item, mesmo que o baú guarde mais por dentro.
 - Nenhuma receita do plugin (kits, upgrades, mochilas) aparece no livro de receitas *vanilla* do Minecraft — todas ficam só no Livro de Receitas próprio do IcarusChests (`/icaruschests recipebook`).
 - A conversão de baús naturais só pega chunks gerados *depois* de instalar o plugin — terreno que o mundo já tinha explorado/gerado antes disso continua com baús 100% vanilla (o servidor não sabe distinguir "chunk antigo" de "chunk que já rodou com o plugin instalado").

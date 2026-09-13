@@ -696,37 +696,12 @@ public final class ChestGuiListener implements Listener {
         // vanilla's own, uncancelled handling only updated the live view, not the array yet, and a
         // populate() without this flush would make it reappear in the chest as a duplicate.
         GuiFactory.syncVisibleToChest(chest, holder, event.getView().getTopInventory());
-        ItemStack[] contents = chest.getContents();
-        int remaining = shifted.getAmount();
-
-        // First pass: top off any existing matching stack, up to the upgraded cap.
-        for (int i = 0; i < contents.length && remaining > 0; i++) {
-            ItemStack existing = contents[i];
-            if (existing != null && existing.isSimilar(shifted)) {
-                int cap = (int) Math.floor(existing.getMaxStackSize() * stackMultiplier);
-                int space = cap - existing.getAmount();
-                if (space > 0) {
-                    int toMove = Math.min(space, remaining);
-                    existing.setAmount(existing.getAmount() + toMove);
-                    remaining -= toMove;
-                }
-            }
-        }
-        // Second pass: fill empty slots, each up to the upgraded cap.
-        int emptySlotCap = (int) Math.floor(shifted.getMaxStackSize() * stackMultiplier);
-        for (int i = 0; i < contents.length && remaining > 0; i++) {
-            if (contents[i] == null) {
-                int toMove = Math.min(emptySlotCap, remaining);
-                contents[i] = withAmount(shifted, toMove);
-                remaining -= toMove;
-            }
-        }
-
-        int moved = shifted.getAmount() - remaining;
-        if (moved <= 0) {
+        int insertedAmount = UpgradeSlots.insertRespectingStackCap(chest.getContents(), stackMultiplier, shifted);
+        if (insertedAmount <= 0) {
             return; // chest is entirely full even at the upgraded cap; nothing moved
         }
         chest.setDirty(true);
+        int remaining = shifted.getAmount() - insertedAmount;
         event.setCurrentItem(remaining > 0 ? withAmount(shifted, remaining) : null);
         GuiFactory.populate(chest, holder, event.getView().getTopInventory());
     }
