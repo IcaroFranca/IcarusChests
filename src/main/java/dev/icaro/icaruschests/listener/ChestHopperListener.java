@@ -72,6 +72,9 @@ public final class ChestHopperListener implements Listener {
                 return; // filtered out — same as a vanilla hopper against a comparator-locked container
             }
         }
+        // If someone has this chest open right now, flush their live view into the array first —
+        // see GuiFactory#syncIfOpen — before mutating it and (below) repainting from it.
+        GuiFactory.syncIfOpen(chest);
         double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
         int insertedAmount = UpgradeSlots.insertRespectingStackCap(chest.getContents(), stackMultiplier, incoming);
         if (insertedAmount <= 0) {
