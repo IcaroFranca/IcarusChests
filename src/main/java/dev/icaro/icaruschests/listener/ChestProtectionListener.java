@@ -20,12 +20,17 @@ import org.bukkit.inventory.InventoryHolder;
  * Keeps IcarusChests consistent against world events that would otherwise
  * silently desync a block's position/existence from its PDC tags and
  * database row: pistons pushing/pulling a tagged block, explosions
- * destroying one outright, and vanilla's own item-transport machinery
- * (hoppers, hopper minecarts, droppers feeding a hopper chain, …) reading or
- * writing the tagged chest block's real, otherwise-untouched vanilla
- * inventory — which the plugin's own GUI never looks at, so anything moved
- * through it that way would be invisible to players and could silently
- * duplicate or swallow items relative to what the custom inventory shows.
+ * destroying one outright, and a hopper (or hopper minecart, or a dropper
+ * feeding one) pulling items back OUT of a tagged chest through its real,
+ * otherwise-untouched vanilla inventory — which the plugin's own GUI never
+ * looks at, so anything read through it that way would be invisible to
+ * players while silently vanishing from what the custom inventory shows.
+ *
+ * <p>The other direction — a hopper pushing items INTO a tagged chest — is
+ * deliberately not blocked here: {@code ChestHopperListener} handles that
+ * one on its own, translating the push into a real insertion against {@code
+ * IcarusChest#getContents()} instead of the vanilla inventory. Extraction
+ * stays unsupported for now (a deliberate scope decision, not a gap).
  *
  * <p>M6 scope: an explosion that destroys only one half of a double chest
  * doesn't clean up the surviving half's pointer tag (unlike a normal break)
@@ -80,15 +85,18 @@ public final class ChestProtectionListener implements Listener {
 
     /**
      * The chest block a tagged IcarusChest occupies is still a real vanilla
-     * {@code CHEST} with its own (always-empty-by-design) inventory — hoppers
-     * and hopper minecarts address that vanilla inventory directly and know
-     * nothing about the plugin's own {@code IcarusChest#getContents()}, so
-     * without this they'd read/write a second, hidden storage location on
-     * the very same block.
+     * {@code CHEST} with its own (always-empty-by-design) inventory — a
+     * hopper or hopper minecart pulling FROM it addresses that vanilla
+     * inventory directly and knows nothing about the plugin's own {@code
+     * IcarusChest#getContents()}, so without this it would read a second,
+     * always-empty storage location on the very same block instead of
+     * actually extracting anything. Only the source side is checked here —
+     * see the class javadoc for why the destination side is handled
+     * elsewhere.
      */
     @EventHandler(ignoreCancelled = true)
     public void onInventoryMoveItem(InventoryMoveItemEvent event) {
-        if (isTaggedChestInventory(event.getSource()) || isTaggedChestInventory(event.getDestination())) {
+        if (isTaggedChestInventory(event.getSource())) {
             event.setCancelled(true);
         }
     }
