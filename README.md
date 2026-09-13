@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-3.0.1-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-4.0.0-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -24,7 +24,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
   - Rolagem quando a capacidade passa de 45 slots (sem paginar — a mesma janela desliza).
   - 🔎 **Buscar** — abre uma placa pra digitar o nome de um item (funciona em português e inglês) e traz os resultados pro topo.
   - ⚙ **Organizar** — alterna entre 3 modos de ordenação com um clique, sem abrir outro menu.
-- **Mochilas portáteis** — a mesma experiência de armazenamento, só que carregada no inventário. Craftável, evoluível de tier mantendo o conteúdo, com os mesmos upgrades de Filtro/Stack. O tooltip mostra um preview de verdade do que está guardado dentro (protegido: clique direito no item é bloqueado em qualquer inventário, então o mecanismo nativo de inserir/retirar do Bundle nunca é acionado), e dá pra colorir craftando a mochila junto com qualquer corante (preserva conteúdo e tier — muda só a cor).
+- **Mochilas portáteis** — a mesma experiência de armazenamento, só que carregada no inventário. Craftável, evoluível de tier mantendo o conteúdo, com os mesmos upgrades de Filtro/Stack. Cada mochila é sempre uma cabeça customizada (nunca um Embrulho/Bundle vanilla) — decisão deliberada pra eliminar de vez a classe de bugs de sumiço/duplicação que um Bundle real, com inventário próprio do cliente, podia causar. Não dá mais pra colorir a mochila.
 - **Compatível com Bedrock** (via Geyser/Floodgate): texturas de cabeça customizadas exportadas automaticamente pro Geyser, e um ajuste fino pra contornar como o cliente Bedrock valida stacks localmente.
 - **Livro de Receitas** in-game — um menu mostra o ícone de toda receita do plugin de uma vez; clique em qualquer item pra ver exatamente como craftar.
 - **Persistência em SQLite** (não YAML), assíncrona, com autosave periódico e migrações versionadas — nunca perde dado num update.
@@ -69,7 +69,7 @@ Aliases: `/icarus`, `/ic`.
 
 ## ⚙️ Configuração
 
-Tudo em `config.yml` — nenhuma dessas seções é obrigatória: sem uma textura configurada, o item cai num ícone vanilla de fallback (nunca quebra por falta de configuração).
+Tudo em `config.yml` — nenhuma dessas seções é obrigatória: sem uma textura configurada, o item cai num ícone padrão (vanilla, no caso de kits/botões; a cabeça customizada que o próprio plugin já traz pronta, no caso das mochilas — nunca quebra por falta de configuração).
 
 ```yaml
 autosave-interval-seconds: 300
