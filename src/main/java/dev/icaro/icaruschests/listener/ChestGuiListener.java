@@ -177,9 +177,11 @@ public final class ChestGuiListener implements Listener {
      * handling is a known source of Paper instability (confirmed: it's what actually crashed the
      * server here) — so a click sorts {@code chest.getContents()} in place, right where the click
      * happened, and redraws with {@link GuiFactory#populate}, exactly like scrolling or an upgrade
-     * install/removal already do. Each click also advances {@code holder}'s {@link
-     * IcarusChestHolder#getNextSortType()} to the next {@link SortType}, cycling through all three
-     * — see {@code GuiFactory#controlButtonItem} for the lore that names which one is next.
+     * install/removal already do. Silent by design — no chat message — since the redrawn contents
+     * and the button's own lore already show the result. {@code holder}'s {@link
+     * IcarusChestHolder#getCurrentSortType()} only advances to the next {@link SortType} *after*
+     * that redraw, so the lore always names what the chest is now actually organized by, never a
+     * preview of the click after next — see {@code GuiFactory#controlButtonItem}.
      */
     private void handleControlButtonClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, ControlButton button) {
         if (!(event.getWhoClicked() instanceof Player player)) {
@@ -190,11 +192,9 @@ public final class ChestGuiListener implements Listener {
             case ORGANIZE -> {
                 Inventory topInventory = event.getView().getTopInventory();
                 GuiFactory.syncVisibleToChest(chest, holder, topInventory);
-                SortType type = GuiFactory.nextSortAndAdvance(holder);
-                sortChest(chest, type);
-                player.sendMessage(Component.text("Baú organizado: ", NamedTextColor.GREEN)
-                        .append(type.displayName().color(NamedTextColor.YELLOW)));
+                sortChest(chest, holder.getCurrentSortType());
                 GuiFactory.populate(chest, holder, topInventory);
+                GuiFactory.advanceSortType(holder);
             }
         }
     }

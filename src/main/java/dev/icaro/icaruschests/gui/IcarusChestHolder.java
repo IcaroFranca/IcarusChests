@@ -18,7 +18,7 @@ import java.util.UUID;
  * viewing session, not one player — every simultaneous viewer of the same
  * chest/backpack is handed the exact same {@link Inventory}/holder pair (see
  * {@link GuiFactory#open}), so {@link #scrollOffset} and {@link
- * #nextSortType} are shared state too: one viewer scrolling or clicking
+ * #currentSortType} are shared state too: one viewer scrolling or clicking
  * Organize moves everyone's view together, the same way vanilla's own double
  * chest looks identical to every player looking at it. Both reset only once
  * the session actually ends (every viewer gone, see {@link
@@ -30,7 +30,7 @@ public final class IcarusChestHolder implements InventoryHolder {
     private final StorageTier tier;
     private Inventory inventory;
     private int scrollOffset;
-    private SortType nextSortType = SortType.values()[0];
+    private SortType currentSortType = SortType.values()[0];
 
     IcarusChestHolder(UUID chestId, StorageTier tier) {
         this.chestId = chestId;
@@ -62,12 +62,17 @@ public final class IcarusChestHolder implements InventoryHolder {
         this.scrollOffset = scrollOffset;
     }
 
-    /** The {@link SortType} the Organize button applies on its next click. */
-    public SortType getNextSortType() {
-        return nextSortType;
+    /**
+     * The {@link SortType} the Organize button's lore currently advertises — the one that will
+     * be applied if it's clicked right now (see {@code GuiFactory#advanceSortType}, called only
+     * after that sort is actually applied and the lore redrawn, so this always matches what the
+     * chest is presently organized by rather than previewing the click after next).
+     */
+    public SortType getCurrentSortType() {
+        return currentSortType;
     }
 
-    void setNextSortType(SortType nextSortType) {
-        this.nextSortType = nextSortType;
+    void setCurrentSortType(SortType currentSortType) {
+        this.currentSortType = currentSortType;
     }
 }

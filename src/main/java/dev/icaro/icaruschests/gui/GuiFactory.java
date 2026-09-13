@@ -368,9 +368,9 @@ public final class GuiFactory {
      * Builds one of the two fixed control-row buttons, using its configured custom-head texture
      * (see {@code control-heads} in {@code config.yml}) or a plain vanilla fallback icon if unset —
      * same pattern as an upgrade's own icon (see {@code UpgradeRegistry#createItem}). Organize's lore
-     * names {@code holder}'s {@link IcarusChestHolder#getNextSortType()} so the player knows what a
-     * click will do before doing it — it cycles through {@link SortType} on every click, one sort
-     * per click, never a separate menu (see {@code ChestGuiListener#handleControlButtonClick}).
+     * names {@code holder}'s {@link IcarusChestHolder#getCurrentSortType()} — what the chest is
+     * presently organized by — which cycles through {@link SortType} on every click, one sort per
+     * click, never a separate menu (see {@code ChestGuiListener#handleControlButtonClick}).
      */
     private static ItemStack controlButtonItem(ControlButton button, IcarusChestHolder holder) {
         Optional<String> texture = configManager == null ? Optional.empty() : configManager.controlHeadTexture(button.key());
@@ -380,8 +380,8 @@ public final class GuiFactory {
                 NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
         Component loreLine = button == ControlButton.SEARCH
                 ? Component.text("Digite o nome de um item numa placa.", NamedTextColor.GRAY)
-                : Component.text("Clique para organizar: ", NamedTextColor.GRAY)
-                        .append(holder.getNextSortType().displayName().color(NamedTextColor.YELLOW));
+                : Component.text("Organização: ", NamedTextColor.GRAY)
+                        .append(holder.getCurrentSortType().displayName().color(NamedTextColor.YELLOW));
         meta.lore(List.of(loreLine.decoration(TextDecoration.ITALIC, false)));
         meta.getPersistentDataContainer().set(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING, button.key());
         item.setItemMeta(meta);
@@ -408,16 +408,18 @@ public final class GuiFactory {
     }
 
     /**
-     * Returns the {@link SortType} the Organize button is about to apply, advancing {@code holder}
-     * to the next one in the cycle for its following click. {@code holder}'s setter is
-     * package-private (same reasoning as {@link IcarusChestHolder#getScrollOffset()}'s), so this is
-     * the one place outside {@code gui} that's allowed to move it forward.
+     * Advances {@code holder} to the next {@link SortType} in the cycle, ready for its following
+     * click — call only after the current one has already been applied and the lore redrawn (see
+     * {@code ChestGuiListener#handleControlButtonClick}), so the button's lore always names what
+     * the chest is presently organized by, never a preview of the click after next. {@code
+     * holder}'s setter is package-private (same reasoning as {@link
+     * IcarusChestHolder#getScrollOffset()}'s), so this is the one place outside {@code gui} that's
+     * allowed to move it forward.
      */
-    public static SortType nextSortAndAdvance(IcarusChestHolder holder) {
-        SortType current = holder.getNextSortType();
+    public static void advanceSortType(IcarusChestHolder holder) {
         SortType[] cycle = SortType.values();
-        holder.setNextSortType(cycle[(current.ordinal() + 1) % cycle.length]);
-        return current;
+        SortType current = holder.getCurrentSortType();
+        holder.setCurrentSortType(cycle[(current.ordinal() + 1) % cycle.length]);
     }
 
     private static int upgradeColumnIndex(StorageTier tier, int column) {
