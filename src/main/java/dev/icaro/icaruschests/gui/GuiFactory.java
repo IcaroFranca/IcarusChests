@@ -17,9 +17,12 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.UUID;
 
 /**
  * Builds and refreshes the scrollable GUI representing a {@code StorageContainer} — a placed
@@ -39,7 +42,9 @@ import java.util.OptionalInt;
  * everything at once — scrolling redraws the same {@link Inventory} in
  * place, it never closes/reopens the view. A small container (Normal, Copper,
  * single Iron) just gets a plain window sized to exactly {@code capacity + 9},
- * no scrolling machinery at all.
+ * no scrolling machinery at all. Every simultaneous viewer of the same chest
+ * or backpack shares that one {@link Inventory} too (see {@link #open}) —
+ * never one independent copy per viewer.
  *
  * <p>The control row's remaining two columns (1 and 7, immediately flanking
  * the upgrade-slot columns on either side of the position indicator) are
@@ -56,6 +61,14 @@ public final class GuiFactory {
 
     private static ConfigManager configManager;
 
+    /**
+     * The one currently-open {@link Inventory} for a given container id, if any — every viewer of
+     * the same chest/backpack shares this exact object (see {@link #open}), the same way vanilla's
+     * own double chest hands every viewer the same real container. Only ever touched from event
+     * handlers, always on the main thread, so a plain map is safe.
+     */
+    private static final Map<UUID, Inventory> openInventories = new HashMap<>();
+
     private GuiFactory() {
     }
 
@@ -64,11 +77,52 @@ public final class GuiFactory {
         GuiFactory.configManager = configManager;
     }
 
-    /** Builds the GUI (starting scrolled to the top) and opens it for {@code player}. */
+    /**
+     * Opens {@code chest}'s GUI for {@code player} — reusing the same {@link Inventory} (and its
+     * {@link IcarusChestHolder}, scroll offset included) if someone else already has it open,
+     * rather than building a second, independent one.
+     *
+     * <p>Before this, two simultaneous viewers of the same chest/backpack each got their own
+     * separate {@code Inventory} object, both showing the same starting snapshot but never seeing
+     * each other's live edits — whichever one closed LAST would sync its own (by then stale) view
+     * back into {@code chest.getContents()}, silently overwriting whatever the other viewer had
+     * added or moved in the meantime. Sharing one {@code Inventory} for every viewer, exactly like
+     * vanilla does for a physical chest, removes that split entirely: every click from anyone goes
+     * through the same live object, so there's nothing left to reconcile on close. See {@link
+     * #forgetIfEmpty} for when a container becomes eligible for a fresh build again.
+     *
+     * <p>Joining an already-open one always repopulates it first — e.g. the search sign flow
+     * reorders {@code chest.getContents()} then reopens for the same player; without this, neither
+     * that player nor anyone else already looking at the shared view would see the new order until
+     * something else happened to trigger a redraw.
+     */
     public static Inventory open(Player player, StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null) {
+            if (existing.getHolder() instanceof IcarusChestHolder holder) {
+                populate(chest, holder, existing);
+            }
+            player.openInventory(existing);
+            return existing;
+        }
         Inventory inventory = build(chest, 0);
+        openInventories.put(chest.getId(), inventory);
         player.openInventory(inventory);
         return inventory;
+    }
+
+    /**
+     * Drops {@code containerId}'s shared {@link Inventory} from the open-viewers registry once
+     * nobody is actually looking at it anymore, so the next {@link #open} builds a fresh one
+     * (scrolled back to the top) instead of resurrecting a closed session. Safe to call on every
+     * close, viewers remaining or not — {@code inventory} is only ever removed if it's both still
+     * the currently-registered one for this id (never someone else's newer session) and genuinely
+     * has no viewers left.
+     */
+    public static void forgetIfEmpty(UUID containerId, Inventory inventory) {
+        if (inventory.getViewers().isEmpty()) {
+            openInventories.remove(containerId, inventory);
+        }
     }
 
     public static Inventory build(StorageContainer chest, int scrollOffset) {

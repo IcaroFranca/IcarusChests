@@ -783,12 +783,19 @@ public final class ChestGuiListener implements Listener {
         if (!(event.getInventory().getHolder() instanceof IcarusChestHolder holder)) {
             return;
         }
+        Inventory inventory = event.getInventory();
         resolveContainer(holder.getChestId()).ifPresent(chest -> {
-            GuiFactory.syncVisibleToChest(chest, holder, event.getInventory());
+            GuiFactory.syncVisibleToChest(chest, holder, inventory);
             if (chest instanceof IcarusBackpack backpack && event.getPlayer() instanceof Player player) {
                 refreshBackpackPreview(player, backpack);
             }
         });
+        // A tick later, not right here: this event's own viewer list may not have dropped the
+        // player who just closed it yet, and forgetIfEmpty must only ever see the *true* final
+        // count — freeing this shared Inventory one tick early, while it still has a viewer,
+        // would let the next opener build a second, independent one for the same container again,
+        // right back to the split this sharing was meant to remove (see GuiFactory#open's docs).
+        Bukkit.getScheduler().runTask(plugin, () -> GuiFactory.forgetIfEmpty(holder.getChestId(), inventory));
     }
 
     /**

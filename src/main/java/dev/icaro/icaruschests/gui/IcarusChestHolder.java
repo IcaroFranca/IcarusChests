@@ -14,13 +14,15 @@ import java.util.UUID;
  * reference is assigned right after construction since Bukkit requires the
  * holder to exist before the inventory it owns can be created.
  *
- * <p>Unlike the container it points to, a holder is scoped to one viewing
- * session: {@link #scrollOffset} is mutated in place as the viewer scrolls
- * (see {@code ChestGuiListener}), since scrolling reuses the same {@link
- * Inventory} rather than reopening a new one. {@link #nextSortType} works
- * the same way for the Organize button: each click applies it and advances
- * to the next one, so a fresh session always starts back at the first
- * {@link SortType}.
+ * <p>Unlike the container it points to, a holder is scoped to one *shared*
+ * viewing session, not one player — every simultaneous viewer of the same
+ * chest/backpack is handed the exact same {@link Inventory}/holder pair (see
+ * {@link GuiFactory#open}), so {@link #scrollOffset} and {@link
+ * #nextSortType} are shared state too: one viewer scrolling or clicking
+ * Organize moves everyone's view together, the same way vanilla's own double
+ * chest looks identical to every player looking at it. Both reset only once
+ * the session actually ends (every viewer gone, see {@link
+ * GuiFactory#forgetIfEmpty}) and a later open builds a fresh pair.
  */
 public final class IcarusChestHolder implements InventoryHolder {
 
