@@ -10,7 +10,6 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.TileState;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
@@ -22,11 +21,9 @@ import java.util.logging.Level;
 /**
  * Tags a plain {@code Material.CHEST} block as a new {@link IcarusChest} — a fresh standalone
  * primary at {@link ChestTier#NORMAL}, or linked as a double chest's secondary half if adjacent to
- * an existing untagged... no, an existing already-tagged, still-single primary of the same tier.
- * Shared by {@code ChestPlaceListener} (a player just placed the block) and {@code
- * NaturalChestListener} (world generation just created it) — both want the exact same
- * tagging/linking/persistence logic, only reached through a different event, and the natural-
- * generation path additionally has real vanilla loot to carry over (see {@link #tagChestBlock}).
+ * an existing, still-single primary of the same tier. Used only by {@code ChestPlaceListener},
+ * which checks the placed item is a {@code StarterChestRegistry} starter chest before ever calling
+ * in here — a plain vanilla chest placed from anywhere else never reaches this class at all.
  */
 public final class ChestTaggingService {
 
@@ -72,26 +69,18 @@ public final class ChestTaggingService {
      * neighborPrimary}'s secondary half if present — callers decide beforehand whether linking is
      * even allowed at all (see {@code ChestPlaceListener}'s tier-mismatch rejection, which runs
      * before this is ever called and simply never calls it in that case).
-     *
-     * @param naturalLoot a natural (world-generated) chest's own rolled vanilla loot to carry into
-     *                     this block's share of the contents array (see {@code
-     *                     NaturalChestListener}), sized to exactly {@link ChestTier#NORMAL}'s
-     *                     capacity — {@code null} for a player-placed block, which never has any.
      */
-    public void tagChestBlock(Block block, Optional<IcarusChest> neighborPrimary, ItemStack[] naturalLoot) {
+    public void tagChestBlock(Block block, Optional<IcarusChest> neighborPrimary) {
         if (neighborPrimary.isPresent()) {
-            linkAsSecondary(block, neighborPrimary.get(), naturalLoot);
+            linkAsSecondary(block, neighborPrimary.get());
         } else {
-            IcarusChest chest = placeAsStandalone(block);
-            if (naturalLoot != null && chest != null) {
-                injectLoot(chest, naturalLoot, 0);
-            }
+            placeAsStandalone(block);
         }
     }
 
-    private IcarusChest placeAsStandalone(Block block) {
+    private void placeAsStandalone(Block block) {
         if (!(block.getState() instanceof TileState state)) {
-            return null;
+            return;
         }
         UUID chestId = UUID.randomUUID();
 
@@ -104,10 +93,9 @@ public final class ChestTaggingService {
             plugin.getLogger().log(Level.WARNING, "Falha ao persistir novo bau " + chestId, ex);
             return null;
         });
-        return chest;
     }
 
-    private void linkAsSecondary(Block block, IcarusChest primary, ItemStack[] naturalLoot) {
+    private void linkAsSecondary(Block block, IcarusChest primary) {
         if (block.getState() instanceof TileState state) {
             // No CHEST_ID/TIER here on purpose: this block has no independent
             // identity, it only ever resolves through to the primary.
@@ -121,24 +109,16 @@ public final class ChestTaggingService {
         // findAdjacentPrimary) finishes: doing this resize immediately could otherwise race
         // hydrateContentsAsync's own main-thread chest.setContents(loaded) completing a moment
         // later and silently overwriting this doubled array with the still-single-sized one it
-        // loaded from disk. See ChestManager's docs on whenReady. Bundling the loot injection into
-        // this same deferred callback (rather than doing it eagerly) is what keeps it race-free too.
-        chestManager.whenReady(primary.getId(), () -> doubleCapacityAndInject(primary, naturalLoot));
+        // loaded from disk. See ChestManager's docs on whenReady.
+        chestManager.whenReady(primary.getId(), () -> doubleCapacity(primary));
     }
 
-    private void doubleCapacityAndInject(IcarusChest primary, ItemStack[] naturalLoot) {
-        // The offset where this specific (secondary) block's own inventory starts within the
-        // shared array — doubling always grows it by appending the new half at the end, so this is
-        // simply whatever size the array was before growing.
-        int offset = primary.effectiveTotalCapacity();
+    private void doubleCapacity(IcarusChest primary) {
         // Doubling only ever grows the array, so this copyOf can't lose data —
         // unlike unlinking (ChestBreakListener), which must drop overflow first.
         int doubledCapacity = primary.getTier().totalCapacity() * 2;
         primary.setContents(Arrays.copyOf(primary.getContents(), doubledCapacity));
         primary.setDoubled(true);
-        if (naturalLoot != null) {
-            injectLoot(primary, naturalLoot, offset);
-        }
         primary.setDirty(true);
         retagDoubled(primary.getLocation().toBlock(), true);
         chestRepository.insert(primary).exceptionally(ex -> {
@@ -149,11 +129,6 @@ public final class ChestTaggingService {
             plugin.getLogger().log(Level.WARNING, "Falha ao persistir conteudo redimensionado do bau " + primary.getId(), ex);
             return null;
         });
-    }
-
-    private void injectLoot(IcarusChest chest, ItemStack[] loot, int offset) {
-        ItemStack[] contents = chest.getContents();
-        System.arraycopy(loot, 0, contents, offset, Math.min(loot.length, contents.length - offset));
     }
 
     private void retagDoubled(Block block, boolean doubled) {
