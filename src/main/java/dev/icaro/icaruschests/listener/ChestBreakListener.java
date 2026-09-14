@@ -2,6 +2,7 @@ package dev.icaro.icaruschests.listener;
 
 import dev.icaro.icaruschests.chest.ChestDestructionHandler;
 import dev.icaro.icaruschests.chest.ChestManager;
+import dev.icaro.icaruschests.chest.StarterChestRegistry;
 import dev.icaro.icaruschests.model.ChestLocation;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.persistence.ChestRepository;
@@ -28,20 +29,26 @@ import java.util.logging.Level;
  * LINK_TARGET} tag on its secondary so that leftover physical block reverts
  * to a plain, untagged chest. Breaking the SECONDARY instead just unlinks it
  * — the primary survives fully intact, shrunk back to its single-chest
- * capacity (any items that no longer fit are dropped at the broken block).
+ * capacity (any items that no longer fit are dropped at the broken block) —
+ * but since the secondary was itself made from its own {@code
+ * StarterChestRegistry} kit (linking two chests takes one kit per physical
+ * block, not one for the pair), breaking it refunds that kit too, same
+ * "never a spend without return" reasoning as {@code ChestDestructionHandler}.
  */
 public final class ChestBreakListener implements Listener {
 
     private final ChestManager chestManager;
     private final ChestDestructionHandler destructionHandler;
     private final ChestRepository chestRepository;
+    private final StarterChestRegistry starterChestRegistry;
     private final Plugin plugin;
 
     public ChestBreakListener(ChestManager chestManager, ChestDestructionHandler destructionHandler,
-                               ChestRepository chestRepository, Plugin plugin) {
+                               ChestRepository chestRepository, StarterChestRegistry starterChestRegistry, Plugin plugin) {
         this.chestManager = chestManager;
         this.destructionHandler = destructionHandler;
         this.chestRepository = chestRepository;
+        this.starterChestRegistry = starterChestRegistry;
         this.plugin = plugin;
     }
 
@@ -82,6 +89,8 @@ public final class ChestBreakListener implements Listener {
 
     /** The secondary block itself just disappears (vanilla handles that) — this only unlinks and shrinks the surviving primary. */
     private void unlinkSecondary(Block secondaryBlock, IcarusChest primary) {
+        secondaryBlock.getWorld().dropItemNaturally(secondaryBlock.getLocation(), starterChestRegistry.createStarterChest());
+
         int shrunkCapacity = primary.getTier().totalCapacity();
         ItemStack[] current = primary.getContents();
         if (current.length > shrunkCapacity) {
