@@ -10,4 +10,15 @@ commands:
   icaruschests:
     description: Main IcarusChests command.
     aliases: [icarus, ic]
-    usage: /<command> ping
+    usage: /<command> <ping|info|give|reload|recipebook>
+
+permissions:
+  icaruschests.info:
+    description: Permite usar /icaruschests info.
+    default: true
+  icaruschests.admin:
+    description: Acesso aos comandos administrativos do IcarusChests (give, reload).
+    default: op
+  icaruschests.recipebook:
+    description: Permite usar /icaruschests recipebook para abrir o Livro de Receitas.
+    default: true

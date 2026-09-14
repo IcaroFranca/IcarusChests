@@ -1,0 +1,48 @@
+# Intervalo, em segundos, entre cada varredura de autosave dos baus com
+# alteracoes pendentes ("dirty"). O flush final ao desligar o servidor
+# sempre salva tudo, independente deste valor. Minimo efetivo: 1 segundo.
+autosave-interval-seconds: 300
+
+# Textura (Base64) de cabeca customizada pra cada kit de upgrade, no formato
+# do minecraft-heads.com: abra a pagina de uma cabeca, clique em "Give Command"
+# e copie o valor bem longo depois de "Value:" (comeca com "eyJ0ZXh0dXJlcyI6").
+# Deixe vazio pra usar o icone padrao (o minerio do tier).
+upgrade-kit-heads:
+  copper: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMmE3ODQ4ZGZlNTk3OTk1ZDA0ZTgyMmFjNTM4NzhhMjllZDgxZTFmMTUyODQ4ZjE4MjNjYjM1MjljNDdlMWNlZiJ9fX0="
+  iron: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZThlNTU0NGFmN2Y1NDg5Y2MyNzQ5MWNhNjhmYTkyMzg0YjhlYTVjZjIwYjVjODE5OGFkYjdiZmQxMmJjMmJjMiJ9fX0="
+  gold: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYmYyNTc3MjY5MzdiYTE4MTQwOTYyMDllYjdiNTE2OGM2NjU1MmQyNWU0MWIxZTUxNGFhNmQzMWM0ZDNhYTZkYyJ9fX0="
+  diamond: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvM2FkYmNmYjI4ODIxNWE4ZDE1M2RkZmRkYjM2YmQyZWQ3YTM3YWRkMzU2NjJmODYzM2Y3MTFkMmRmY2ViNDE3YyJ9fX0="
+  netherite: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvODU2MjU2MzhkNDFhYTJkM2JiNGNmZjkzYWFkNjBkOTdlOWMxZDUyYTA0NDExZmQxZmRjNjliZmIxZmRiNTllZSJ9fX0="
+
+# O mesmo esquema, mas para os icones dos upgrades encaixaveis (Filtro e as
+# 5 tiers de Stack). As chaves usam o nome do UpgradeType em minusculas.
+upgrade-heads:
+  filter: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYWNlMGMzZGEzMTcxNGRkNTM3ZGE2YTBjNmU5YjNhNDZmOWFhOTVhMWE4ZDc5NzU0NDhhMWJhODk5MGZlNTQxZiJ9fX0="
+  stack_copper: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZGRiYjZjNjJkYjhhYTIxYzMzNDFmOTVhYjdjMzI3Nzc1NTFiMjZmNmRlZDUwZmJkOWUxM2Y1YTI0MmZlM2EzMiJ9fX0="
+  stack_iron: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTAxYzYzYzIwM2ExODQxZGUyN2EwZTA5YTI5NWY1Yjg3MzM2MjcwMjRmMTY2OGEwMWQyMDE4NmEzZjg2MzA0MCJ9fX0="
+  stack_gold: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNmU3Mzk4MzlhZWY5OTRmZjUyNjJjZWY1N2VlZGFlNzllOTczOGUxMTcwN2MyNjgwZjVjOTUzYWUwYzBkZTI4OCJ9fX0="
+  stack_diamond: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZjEwMzhjZGM4NDIzNGI1YWZiM2FlYTg1M2JmM2QwNTE3NWQxOWFlN2I0ODc1YTkxYjUyZjc2NmMwN2IzZGIwYiJ9fX0="
+  stack_netherite: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNGMwYzQ5ZDRkMjJhZjhjZDc1Y2M2YzhhYjE4ZWE0OTQwYjY4NzViOGVlMDM2OTcwYjY5MjcyMjA4M2Y2OGNmYiJ9fX0="
+
+# O mesmo esquema, mas para os dois botoes fixos do baú (Buscar e Organizar,
+# na fileira de controle). Deixe vazio pra usar o icone padrao (Luneta pra
+# Buscar, Funil pra Organizar).
+control-heads:
+  search: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMWZmMDQxOTc2YTA5ZGQwNTNlM2QxZDRlNjExYWFjMDk1OTRkNzRmYzcxYTBlYzRkYTAxMTA0MTZkMzE3ZGJhOCJ9fX0="
+  organize: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvNDRiYzc0Y2NiOWM3OWIwZTY4MzUyMDQ4Mzc4YWEzY2M4MzJiMGE5YWQyZWExNGVkZTM4YThmYmY2NmY0YzE2MyJ9fX0="
+
+# O mesmo esquema, mas para o item da mochila portátil em cada tier. Deixe
+# vazio pra usar a cabeca padrao que o plugin ja traz pronta pra cada tier
+# (a mochila NUNCA é um Embrulho/Bundle vanilla — sempre uma cabeca customizada).
+backpack-heads:
+  leather: ""
+  copper: ""
+  iron: ""
+  gold: ""
+  diamond: ""
+  netherite: ""
+
+# O mesmo esquema, mas para o "Baú do IcarusChests" (o kit craftado com Baú +
+# Redstone, usado com shift + botão direito num baú comum já colocado pra
+# tagueá-lo). Deixe vazio pra usar a cabeça padrão que o plugin já traz pronta.
+chest-starter-head: ""

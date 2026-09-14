@@ -1,7 +1,44 @@
 package dev.icaro.icaruschests;
 
+import dev.icaro.icaruschests.backpack.BackpackRegistry;
+import dev.icaro.icaruschests.chest.AutosaveTask;
+import dev.icaro.icaruschests.chest.BackpackManager;
+import dev.icaro.icaruschests.chest.ChestDestructionHandler;
+import dev.icaro.icaruschests.chest.ChestManager;
+import dev.icaro.icaruschests.chest.ChestTaggingService;
+import dev.icaro.icaruschests.chest.StarterChestRegistry;
 import dev.icaro.icaruschests.command.IcarusChestsCommand;
+import dev.icaro.icaruschests.config.ConfigManager;
+import dev.icaro.icaruschests.gui.GuiFactory;
+import dev.icaro.icaruschests.gui.IcarusChestHolder;
+import dev.icaro.icaruschests.gui.RecipeBookRegistry;
+import dev.icaro.icaruschests.listener.BackpackInteractListener;
+import dev.icaro.icaruschests.listener.BackpackRecipeListener;
+import dev.icaro.icaruschests.listener.ChestBreakListener;
+import dev.icaro.icaruschests.listener.ChestGuiListener;
+import dev.icaro.icaruschests.listener.ChestHopperListener;
+import dev.icaro.icaruschests.listener.ChestInteractListener;
+import dev.icaro.icaruschests.listener.ChestPlaceListener;
+import dev.icaro.icaruschests.listener.ChestProtectionListener;
+import dev.icaro.icaruschests.listener.ChunkListener;
+import dev.icaro.icaruschests.listener.FilterConfigListener;
+import dev.icaro.icaruschests.listener.RecipeBookListener;
+import dev.icaro.icaruschests.listener.SpecialItemProtectionListener;
+import dev.icaro.icaruschests.listener.UpgradeRecipeValidationListener;
+import dev.icaro.icaruschests.persistence.ChestRepository;
+import dev.icaro.icaruschests.persistence.Database;
+import dev.icaro.icaruschests.upgrade.TierUpgradeService;
+import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
+import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
+import dev.icaro.icaruschests.util.GeyserSkullExport;
+import dev.icaro.icaruschests.util.NamespacedKeys;
+import dev.icaro.icaruschests.util.PortugueseItemNames;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
+
+import java.util.concurrent.CompletionException;
 
 /**
  * Entry point for the IcarusChests plugin.
@@ -12,20 +49,149 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public final class IcarusChestsPlugin extends JavaPlugin {
 
+    private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
+
+    private Database database;
+    private ChestRepository chestRepository;
+    private ChestManager chestManager;
+    private BackpackManager backpackManager;
+    private BackpackRegistry backpackRegistry;
+    private BackpackRecipeListener backpackRecipeListener;
+    private BackpackInteractListener backpackInteractListener;
+    private ConfigManager configManager;
+    private AutosaveTask autosaveTask;
+    private BukkitTask autosaveTaskHandle;
+    private UpgradeKitRegistry upgradeKitRegistry;
+    private UpgradeRegistry upgradeRegistry;
+    private RecipeBookRegistry recipeBookRegistry;
+    private TierUpgradeService tierUpgradeService;
+    private ChestDestructionHandler destructionHandler;
+    private ChestTaggingService chestTaggingService;
+    private StarterChestRegistry starterChestRegistry;
+
     @Override
     public void onEnable() {
-        var pingCommand = getCommand("icaruschests");
-        if (pingCommand != null) {
-            IcarusChestsCommand executor = new IcarusChestsCommand(this);
-            pingCommand.setExecutor(executor);
-            pingCommand.setTabCompleter(executor);
+        NamespacedKeys.init(this);
+        PortugueseItemNames.init(this);
+        configManager = new ConfigManager(this);
+        configManager.load();
+        GuiFactory.init(configManager);
+        GeyserSkullExport.export(this, configManager);
+
+        if (!openDatabase()) {
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         }
+
+        chestRepository = new ChestRepository(database);
+        upgradeKitRegistry = new UpgradeKitRegistry(this, configManager);
+        upgradeRegistry = new UpgradeRegistry(this, configManager);
+        backpackRegistry = new BackpackRegistry(configManager);
+        starterChestRegistry = new StarterChestRegistry(this, configManager);
+        recipeBookRegistry = new RecipeBookRegistry(upgradeKitRegistry, upgradeRegistry, backpackRegistry, starterChestRegistry);
+        chestManager = new ChestManager(chestRepository, upgradeRegistry, this);
+        backpackManager = new BackpackManager(chestRepository, upgradeRegistry, this);
+        backpackRecipeListener = new BackpackRecipeListener(this, backpackRegistry, backpackManager, chestRepository);
+        backpackInteractListener = new BackpackInteractListener(backpackManager);
+        autosaveTask = new AutosaveTask(chestManager, backpackManager, chestRepository, getLogger(), this);
+        destructionHandler = new ChestDestructionHandler(chestManager, chestRepository, upgradeKitRegistry, starterChestRegistry, this);
+        tierUpgradeService = new TierUpgradeService(chestRepository, this);
+        chestTaggingService = new ChestTaggingService(chestManager, chestRepository, this);
+
+        // Commands/listeners are registered before recipes: recipe registration reaches out to
+        // config.yml-driven custom head textures and is the riskiest step here, and each recipe
+        // is already isolated against throwing (see registerRecipes()) — but registering it last
+        // means the plugin's core functionality is guaranteed to come up regardless either way.
+        registerCommands();
+        registerListeners();
+        rescheduleAutosave();
+        starterChestRegistry.registerRecipe();
+        upgradeKitRegistry.registerRecipes();
+        upgradeRegistry.registerRecipes();
+        backpackRecipeListener.registerRecipes();
 
         getLogger().info("IcarusChests habilitado (v" + getPluginMeta().getVersion() + ").");
     }
 
+    /** Reloads {@code config.yml} and applies the (possibly changed) autosave interval immediately. */
+    public void reloadPluginConfig() {
+        configManager.load();
+        rescheduleAutosave();
+        GeyserSkullExport.export(this, configManager);
+    }
+
+    private void rescheduleAutosave() {
+        if (autosaveTaskHandle != null) {
+            autosaveTaskHandle.cancel();
+        }
+        long period = configManager.autosaveIntervalTicks();
+        autosaveTaskHandle = getServer().getScheduler().runTaskTimer(this, autosaveTask, period, period);
+    }
+
     @Override
     public void onDisable() {
+        closeOpenChestGuis();
+        if (autosaveTask != null) {
+            autosaveTask.flush(SHUTDOWN_FLUSH_TIMEOUT_SECONDS);
+        }
+        if (database != null) {
+            database.close(SHUTDOWN_FLUSH_TIMEOUT_SECONDS);
+        }
         getLogger().info("IcarusChests desabilitado.");
+    }
+
+    /** Blocks briefly at startup so the schema is guaranteed ready before any listener runs. */
+    private boolean openDatabase() {
+        database = new Database(this);
+        try {
+            database.open().join();
+            return true;
+        } catch (CompletionException e) {
+            getLogger().severe("Nao foi possivel abrir o banco SQLite do IcarusChests: " + e.getCause());
+            return false;
+        }
+    }
+
+    /** Forces any player currently viewing a tiered chest GUI to close it, so its edits are synced before the final flush. */
+    private void closeOpenChestGuis() {
+        for (Player player : getServer().getOnlinePlayers()) {
+            if (player.getOpenInventory().getTopInventory().getHolder() instanceof IcarusChestHolder) {
+                player.closeInventory();
+            }
+        }
+    }
+
+    private void registerCommands() {
+        var command = getCommand("icaruschests");
+        if (command != null) {
+            IcarusChestsCommand executor = new IcarusChestsCommand(this, upgradeKitRegistry, recipeBookRegistry);
+            command.setExecutor(executor);
+            command.setTabCompleter(executor);
+        }
+    }
+
+    private void registerListeners() {
+        PluginManager pluginManager = getServer().getPluginManager();
+        pluginManager.registerEvents(new ChestPlaceListener(chestManager), this);
+        pluginManager.registerEvents(new ChestBreakListener(chestManager, destructionHandler, chestRepository, starterChestRegistry, this), this);
+        pluginManager.registerEvents(new ChestInteractListener(chestManager, chestTaggingService, tierUpgradeService), this);
+        pluginManager.registerEvents(new ChestGuiListener(chestManager, backpackManager, chestRepository, this), this);
+        pluginManager.registerEvents(new ChestProtectionListener(chestManager, destructionHandler), this);
+        pluginManager.registerEvents(new ChestHopperListener(chestManager), this);
+        pluginManager.registerEvents(new ChunkListener(chestManager), this);
+        pluginManager.registerEvents(new FilterConfigListener(), this);
+        pluginManager.registerEvents(new RecipeBookListener(recipeBookRegistry), this);
+        pluginManager.registerEvents(new UpgradeRecipeValidationListener(), this);
+        pluginManager.registerEvents(new SpecialItemProtectionListener(), this);
+        pluginManager.registerEvents(backpackInteractListener, this);
+        pluginManager.registerEvents(backpackRecipeListener, this);
+    }
+
+    public ChestManager getChestManager() {
+        return chestManager;
+    }
+
+    public BackpackManager getBackpackManager() {
+        return backpackManager;
     }
 }

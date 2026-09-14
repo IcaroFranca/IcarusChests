@@ -1,0 +1,481 @@
+package dev.icaro.icaruschests.gui;
+
+import dev.icaro.icaruschests.config.ConfigManager;
+import dev.icaro.icaruschests.model.StorageContainer;
+import dev.icaro.icaruschests.tier.StorageTier;
+import dev.icaro.icaruschests.util.CustomHeads;
+import dev.icaro.icaruschests.util.NamespacedKeys;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.UUID;
+
+/**
+ * Builds and refreshes the scrollable GUI representing a {@code StorageContainer} — a placed
+ * chest ({@code IcarusChest}) or a portable backpack ({@code IcarusBackpack}) alike; everything
+ * here is written once against that shared interface (see {@code StorageContainer}/{@code
+ * StorageTier}) rather than duplicated per kind.
+ *
+ * <p>A single Minecraft chest-type inventory is hard-capped at 54 slots by
+ * the client itself — not a Bukkit/Paper limitation, a protocol one — so a
+ * tier (or a doubled chest) bigger than that can't fit on one screen without
+ * a custom client mod, which is out of scope for a server-only plugin.
+ * Instead of paginating, every container reserves a bottom control row (9 slots,
+ * never counted toward the tier's own capacity) hosting scroll buttons, a
+ * position indicator, and the container's pluggable-upgrade slots (see {@code
+ * UpgradeRegistry}). When capacity exceeds what fits above that row (45
+ * slots), the top area becomes a scrollable window instead of showing
+ * everything at once — scrolling redraws the same {@link Inventory} in
+ * place, it never closes/reopens the view. A small container (Normal, Copper,
+ * single Iron) just gets a plain window sized to exactly {@code capacity + 9},
+ * no scrolling machinery at all. Every simultaneous viewer of the same chest
+ * or backpack shares that one {@link Inventory} too (see {@link #open}) —
+ * never one independent copy per viewer.
+ *
+ * <p>The control row's remaining two columns (1 and 7, immediately flanking
+ * the upgrade-slot columns on either side of the position indicator) are
+ * fixed Search and Organize buttons — always present regardless of tier, never
+ * upgrade slots. See {@link #controlButtonAction(ItemStack)} and {@code
+ * ChestGuiListener#handleControlButtonClick} for what clicking them does.
+ */
+public final class GuiFactory {
+
+    private static final int CONTENT_WINDOW = 45;
+    private static final int CONTROL_ROW_SIZE = 9;
+    /** Control-row columns available for upgrade slots — 0, 1, 4, 7 and 8 are reserved for scroll/search/indicator/organize. */
+    private static final int[] UPGRADE_SLOT_COLUMNS = {2, 3, 5, 6};
+
+    private static ConfigManager configManager;
+
+    /**
+     * The one currently-open {@link Inventory} for a given container id, if any — every viewer of
+     * the same chest/backpack shares this exact object (see {@link #open}), the same way vanilla's
+     * own double chest hands every viewer the same real container. Only ever touched from event
+     * handlers, always on the main thread, so a plain map is safe.
+     */
+    private static final Map<UUID, Inventory> openInventories = new HashMap<>();
+
+    private GuiFactory() {
+    }
+
+    /** Must be called once during {@code onEnable}, before any GUI is built, so the Search/Organize buttons can read their configured head textures. */
+    public static void init(ConfigManager configManager) {
+        GuiFactory.configManager = configManager;
+    }
+
+    /**
+     * Opens {@code chest}'s GUI for {@code player} — reusing the same {@link Inventory} (and its
+     * {@link IcarusChestHolder}, scroll offset included) if someone else already has it open,
+     * rather than building a second, independent one.
+     *
+     * <p>Before this, two simultaneous viewers of the same chest/backpack each got their own
+     * separate {@code Inventory} object, both showing the same starting snapshot but never seeing
+     * each other's live edits — whichever one closed LAST would sync its own (by then stale) view
+     * back into {@code chest.getContents()}, silently overwriting whatever the other viewer had
+     * added or moved in the meantime. Sharing one {@code Inventory} for every viewer, exactly like
+     * vanilla does for a physical chest, removes that split entirely: every click from anyone goes
+     * through the same live object, so there's nothing left to reconcile on close. See {@link
+     * #forgetIfEmpty} for when a container becomes eligible for a fresh build again.
+     *
+     * <p>Joining an already-open one always repopulates it first — e.g. the search sign flow
+     * reorders {@code chest.getContents()} then reopens for the same player; without this, neither
+     * that player nor anyone else already looking at the shared view would see the new order until
+     * something else happened to trigger a redraw.
+     */
+    public static Inventory open(Player player, StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null) {
+            if (existing.getHolder() instanceof IcarusChestHolder holder) {
+                populate(chest, holder, existing);
+            }
+            player.openInventory(existing);
+            return existing;
+        }
+        Inventory inventory = build(chest, 0);
+        openInventories.put(chest.getId(), inventory);
+        player.openInventory(inventory);
+        return inventory;
+    }
+
+    /**
+     * Drops {@code containerId}'s shared {@link Inventory} from the open-viewers registry once
+     * nobody is actually looking at it anymore, so the next {@link #open} builds a fresh one
+     * (scrolled back to the top) instead of resurrecting a closed session. Safe to call on every
+     * close, viewers remaining or not — {@code inventory} is only ever removed if it's both still
+     * the currently-registered one for this id (never someone else's newer session) and genuinely
+     * has no viewers left.
+     */
+    public static void forgetIfEmpty(UUID containerId, Inventory inventory) {
+        if (inventory.getViewers().isEmpty()) {
+            openInventories.remove(containerId, inventory);
+        }
+    }
+
+    /**
+     * Redraws {@code chest}'s shared GUI in place if anyone currently has it open — e.g. right
+     * after a hopper feeds it from outside any GUI session (see {@code ChestHopperListener}), so a
+     * player already looking at it sees the new item land immediately instead of only on their
+     * next open/scroll. A no-op if nobody's viewing it right now; the next {@link #open} builds
+     * fresh from {@code chest.getContents()} either way.
+     */
+    public static void refreshIfOpen(StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null && existing.getHolder() instanceof IcarusChestHolder holder) {
+            populate(chest, holder, existing);
+        }
+    }
+
+    /**
+     * Flushes any currently-open GUI's live view back into {@code chest}'s own array first — see
+     * {@link #syncVisibleToChest} — for a caller that's about to mutate the array directly from
+     * outside any click handler (see {@code ChestHopperListener}). Without this, a hopper landing
+     * between two clicks of an open session could insert against a stale array (the live view can
+     * lag the array by up to one not-yet-synced click — see {@code ChestGuiListener
+     * #handleContentSlotClick}'s own docs on the exact same hazard), and the {@link #refreshIfOpen}
+     * that follows would then repaint the visible window from that same stale array, silently
+     * reverting whatever the viewer had just done. A no-op if nobody's viewing it right now.
+     */
+    public static void syncIfOpen(StorageContainer chest) {
+        Inventory existing = openInventories.get(chest.getId());
+        if (existing != null && existing.getHolder() instanceof IcarusChestHolder holder) {
+            syncVisibleToChest(chest, holder, existing);
+        }
+    }
+
+    public static Inventory build(StorageContainer chest, int scrollOffset) {
+        int capacity = chest.effectiveTotalCapacity();
+        IcarusChestHolder holder = new IcarusChestHolder(chest.getId(), chest.getTier());
+        Inventory inventory = Bukkit.createInventory(holder, guiSize(capacity), title(chest));
+        holder.setInventory(inventory);
+        holder.setScrollOffset(scrollOffset);
+
+        populate(chest, holder, inventory);
+        return inventory;
+    }
+
+    /**
+     * Repopulates {@code inventory}'s content slots and control row from
+     * {@code chest}, using {@code holder}'s current scroll offset. Never
+     * recreates the inventory or changes its title/size — safe to call
+     * repeatedly on the same open view (scrolling, installing an upgrade).
+     */
+    public static void populate(StorageContainer chest, IcarusChestHolder holder, Inventory inventory) {
+        int capacity = chest.effectiveTotalCapacity();
+        int visibleSlots = visibleContentSlots(capacity);
+        int offset = holder.getScrollOffset();
+
+        ItemStack[] contents = chest.getContents();
+        for (int local = 0; local < visibleSlots; local++) {
+            inventory.setItem(local, displayItemFor(contents[offset + local]));
+        }
+
+        int rowStart = controlRowStart(capacity);
+        boolean scrollable = isScrollable(capacity);
+        int maxOffset = capacity - CONTENT_WINDOW;
+        boolean canScrollUp = scrollable && offset > 0;
+        boolean canScrollDown = scrollable && offset < maxOffset;
+
+        for (int column = 0; column < CONTROL_ROW_SIZE; column++) {
+            inventory.setItem(rowStart + column, controlItem(chest, holder, column, canScrollUp, canScrollDown, offset, capacity));
+        }
+    }
+
+    /** Number of content slots currently visible (excludes the control row). */
+    public static int visibleSlotCount(StorageContainer chest) {
+        return visibleContentSlots(chest.effectiveTotalCapacity());
+    }
+
+    /** Whether {@code localSlot} belongs to the reserved control row. */
+    public static boolean isControlSlot(StorageContainer chest, int localSlot) {
+        return localSlot >= controlRowStart(chest.effectiveTotalCapacity());
+    }
+
+    /** The upgrade slot index a control-row slot corresponds to, if that column is active for this chest's tier. */
+    public static OptionalInt upgradeSlotIndex(StorageContainer chest, int localSlot) {
+        int capacity = chest.effectiveTotalCapacity();
+        int rowStart = controlRowStart(capacity);
+        if (localSlot < rowStart) {
+            return OptionalInt.empty();
+        }
+        int column = localSlot - rowStart;
+        int slotCount = chest.getTier().upgradeSlotCount();
+        for (int i = 0; i < UPGRADE_SLOT_COLUMNS.length && i < slotCount; i++) {
+            if (UPGRADE_SLOT_COLUMNS[i] == column) {
+                return OptionalInt.of(i);
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    /**
+     * Copies the currently visible content slots of {@code inventory} back
+     * into {@code chest}'s backing array at {@code holder}'s scroll offset,
+     * marking it dirty. Called on every GUI close and before scrolling, so
+     * edits are never lost mid-session.
+     */
+    public static void syncVisibleToChest(StorageContainer chest, IcarusChestHolder holder, Inventory inventory) {
+        int visibleSlots = visibleSlotCount(chest);
+        int offset = holder.getScrollOffset();
+        ItemStack[] contents = chest.getContents();
+        for (int local = 0; local < visibleSlots; local++) {
+            ItemStack authoritative = contents[offset + local];
+            if (isOverstacked(authoritative)) {
+                // populate() drew a capped stand-in for this slot (see displayItemFor) — the live
+                // item the client actually holds isn't the real content, so reading it back here
+                // would truncate a Stack-upgraded stack down to a normal one. Any legitimate change
+                // to such a slot already goes straight through the authoritative array (see
+                // ChestGuiListener's Stack-upgrade click/shift-deposit handling), so it's left alone.
+                continue;
+            }
+            contents[offset + local] = inventory.getItem(local);
+        }
+        chest.setDirty(true);
+    }
+
+    /**
+     * A live, client-rendered {@link ItemStack} slot is only ever expected to hold up to its own
+     * normal max stack size — Minecraft's item format hard-caps a stack's declared max size at 99
+     * (the {@code minecraft:max_stack_size} data component, since the 1.20.5 item rewrite) and
+     * assumes {@code count <= getMaxStackSize()} as an invariant almost everywhere. A Stack upgrade
+     * deliberately breaks that invariant in the chest's own authoritative array; {@link
+     * #displayItemFor} is what keeps the actual client-facing slot honest about it.
+     */
+    private static boolean isOverstacked(ItemStack item) {
+        return item != null && item.getType() != Material.AIR && item.getAmount() > item.getMaxStackSize();
+    }
+
+    /**
+     * The safe, client-facing stand-in for a slot whose true amount (a Stack upgrade) exceeds the
+     * item's own normal max stack — capped just *below* that normal max, with the real count
+     * spelled out in a lore line instead. {@code chest.getContents()} keeps holding the real
+     * number; only what gets handed to the live {@link Inventory} slot is ever capped, so nothing
+     * about deposit/withdraw math (which reads the authoritative array, not this) changes.
+     *
+     * <p>Deliberately one short of the real max, not exactly at it: Bedrock (via Geyser) predicts
+     * item-stack merges on the client itself before ever asking the server — a slot already shown
+     * at its item's exact max stack size reads as genuinely full, so a Bedrock client never even
+     * sends the "combine more onto this slot" request in the first place, silently going nowhere
+     * before {@code ChestGuiListener}'s own deposit-beyond-cap logic ever gets a click to
+     * intercept. Java never had this problem since its client always forwards the click
+     * regardless of what it locally expects — leaving one slot of visible headroom costs Java
+     * nothing (the lore line is still what carries the real count) and is what lets Bedrock
+     * actually generate the request that reaches the server, which recomputes the real deposit
+     * amount off the authoritative array either way. Stays at 1 (never 0) for an unstackable
+     * (max stack 1) item pushed over its own limit by a Stack upgrade — there's no way to signal
+     * "not full" on those without the slot appearing empty.
+     */
+    private static ItemStack displayItemFor(ItemStack authoritative) {
+        if (!isOverstacked(authoritative)) {
+            return authoritative;
+        }
+        int trueAmount = authoritative.getAmount();
+        ItemStack display = authoritative.clone();
+        display.setAmount(Math.max(1, display.getMaxStackSize() - 1));
+        ItemMeta meta = display.getItemMeta();
+        List<Component> lore = new ArrayList<>(meta.hasLore() ? meta.lore() : List.of());
+        lore.add(Component.text("Quantidade: " + trueAmount, NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        meta.lore(lore);
+        display.setItemMeta(meta);
+        return display;
+    }
+
+    /** Clamped scroll target for a {@link NavAction}; equal to {@code currentOffset} if the move isn't possible. */
+    public static int scrollTarget(StorageContainer chest, int currentOffset, NavAction action) {
+        int maxOffset = Math.max(0, chest.effectiveTotalCapacity() - CONTENT_WINDOW);
+        int delta = action == NavAction.SCROLL_DOWN ? 9 : -9;
+        return Math.max(0, Math.min(maxOffset, currentOffset + delta));
+    }
+
+    /** Moves {@code holder} to {@code newOffset} and redraws {@code inventory} in place. Caller must sync the old offset first. */
+    public static void scrollTo(StorageContainer chest, IcarusChestHolder holder, Inventory inventory, int newOffset) {
+        holder.setScrollOffset(newOffset);
+        populate(chest, holder, inventory);
+    }
+
+    public static boolean isNavItem(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        return meta.getPersistentDataContainer().has(NamespacedKeys.NAV_ACTION, PersistentDataType.STRING);
+    }
+
+    public static Optional<NavAction> navAction(ItemStack item) {
+        if (!isNavItem(item)) {
+            return Optional.empty();
+        }
+        String raw = item.getItemMeta().getPersistentDataContainer().get(NamespacedKeys.NAV_ACTION, PersistentDataType.STRING);
+        return NavAction.parse(raw);
+    }
+
+    public static boolean isScrollable(int capacity) {
+        return capacity > CONTENT_WINDOW;
+    }
+
+    private static int guiSize(int capacity) {
+        return isScrollable(capacity) ? (CONTENT_WINDOW + CONTROL_ROW_SIZE) : (capacity + CONTROL_ROW_SIZE);
+    }
+
+    private static int visibleContentSlots(int capacity) {
+        return isScrollable(capacity) ? CONTENT_WINDOW : capacity;
+    }
+
+    private static int controlRowStart(int capacity) {
+        return guiSize(capacity) - CONTROL_ROW_SIZE;
+    }
+
+    private static ItemStack controlItem(StorageContainer chest, IcarusChestHolder holder, int column,
+                                          boolean canScrollUp, boolean canScrollDown, int offset, int capacity) {
+        if (column == 0 && canScrollUp) {
+            return navItem(Material.ARROW, "▲ Rolar para Cima", "Sobe uma fileira.", NavAction.SCROLL_UP);
+        }
+        if (column == 8 && canScrollDown) {
+            return navItem(Material.ARROW, "▼ Rolar para Baixo", "Desce uma fileira.", NavAction.SCROLL_DOWN);
+        }
+        if (column == 4) {
+            return positionIndicator(offset, capacity);
+        }
+        if (column == 1) {
+            return controlButtonItem(ControlButton.SEARCH, holder);
+        }
+        if (column == 7) {
+            return controlButtonItem(ControlButton.ORGANIZE, holder);
+        }
+
+        int upgradeSlot = upgradeColumnIndex(chest.getTier(), column);
+        if (upgradeSlot >= 0) {
+            ItemStack installed = chest.getUpgrades()[upgradeSlot];
+            return installed != null ? installed : emptyUpgradeSlot();
+        }
+        return filler();
+    }
+
+    /**
+     * Builds one of the two fixed control-row buttons, using its configured custom-head texture
+     * (see {@code control-heads} in {@code config.yml}) or a plain vanilla fallback icon if unset —
+     * same pattern as an upgrade's own icon (see {@code UpgradeRegistry#createItem}). Organize's lore
+     * names {@code holder}'s {@link IcarusChestHolder#getCurrentSortType()} — what the chest is
+     * presently organized by — which cycles through {@link SortType} on every click, one sort per
+     * click, never a separate menu (see {@code ChestGuiListener#handleControlButtonClick}).
+     */
+    private static ItemStack controlButtonItem(ControlButton button, IcarusChestHolder holder) {
+        Optional<String> texture = configManager == null ? Optional.empty() : configManager.controlHeadTexture(button.key());
+        ItemStack item = texture.isPresent() ? CustomHeads.createHead(texture.get()) : new ItemStack(fallbackMaterial(button));
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(button == ControlButton.SEARCH ? "🔍 Buscar" : "⚙ Organizar",
+                NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        Component loreLine = button == ControlButton.SEARCH
+                ? Component.text("Digite o nome de um item numa placa.", NamedTextColor.GRAY)
+                : Component.text("Organização: ", NamedTextColor.GRAY)
+                        .append(holder.getCurrentSortType().displayName().color(NamedTextColor.YELLOW));
+        meta.lore(List.of(loreLine.decoration(TextDecoration.ITALIC, false)));
+        meta.getPersistentDataContainer().set(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING, button.key());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static Material fallbackMaterial(ControlButton button) {
+        return button == ControlButton.SEARCH ? Material.SPYGLASS : Material.HOPPER;
+    }
+
+    public static boolean isControlButton(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) {
+            return false;
+        }
+        return item.getItemMeta().getPersistentDataContainer().has(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
+    }
+
+    public static Optional<ControlButton> controlButtonAction(ItemStack item) {
+        if (!isControlButton(item)) {
+            return Optional.empty();
+        }
+        String raw = item.getItemMeta().getPersistentDataContainer().get(NamespacedKeys.CONTROL_BUTTON, PersistentDataType.STRING);
+        return ControlButton.fromKey(raw);
+    }
+
+    /**
+     * Advances {@code holder} to the next {@link SortType} in the cycle, ready for its following
+     * click — call only after the current one has already been applied and the lore redrawn (see
+     * {@code ChestGuiListener#handleControlButtonClick}), so the button's lore always names what
+     * the chest is presently organized by, never a preview of the click after next. {@code
+     * holder}'s setter is package-private (same reasoning as {@link
+     * IcarusChestHolder#getScrollOffset()}'s), so this is the one place outside {@code gui} that's
+     * allowed to move it forward.
+     */
+    public static void advanceSortType(IcarusChestHolder holder) {
+        SortType[] cycle = SortType.values();
+        SortType current = holder.getCurrentSortType();
+        holder.setCurrentSortType(cycle[(current.ordinal() + 1) % cycle.length]);
+    }
+
+    private static int upgradeColumnIndex(StorageTier tier, int column) {
+        int slotCount = tier.upgradeSlotCount();
+        for (int i = 0; i < UPGRADE_SLOT_COLUMNS.length && i < slotCount; i++) {
+            if (UPGRADE_SLOT_COLUMNS[i] == column) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static Component title(StorageContainer chest) {
+        StorageTier tier = chest.getTier();
+        String label = "[" + tier.displayName() + "] " + chest.noun();
+        return Component.text(label, tier.titleColor());
+    }
+
+    private static ItemStack navItem(Material material, String name, String loreLine, NavAction action) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(name, NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text(loreLine, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        meta.getPersistentDataContainer().set(NamespacedKeys.NAV_ACTION, PersistentDataType.STRING, action.key());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static ItemStack positionIndicator(int offset, int capacity) {
+        int totalRows = capacity / 9;
+        int firstVisibleRow = offset / 9 + 1;
+        int lastVisibleRow = Math.min(totalRows, firstVisibleRow + (CONTENT_WINDOW / 9) - 1);
+        ItemStack item = new ItemStack(Material.COMPASS);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text("Fileiras " + firstVisibleRow + "–" + lastVisibleRow + " de " + totalRows,
+                NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static ItemStack emptyUpgradeSlot() {
+        ItemStack item = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text("Slot de Upgrade Vazio", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text("Arraste um upgrade aqui para instalar.", NamedTextColor.GRAY)
+                .decoration(TextDecoration.ITALIC, false)));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** Neutral, non-interactive spacer so shift-clicks from the player's own inventory never land in the control row. */
+    private static ItemStack filler() {
+        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
+        item.setItemMeta(meta);
+        return item;
+    }
+}

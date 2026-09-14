@@ -1,0 +1,768 @@
+package dev.icaro.icaruschests.listener;
+
+import dev.icaro.icaruschests.chest.BackpackManager;
+import dev.icaro.icaruschests.chest.ChestManager;
+import dev.icaro.icaruschests.gui.ControlButton;
+import dev.icaro.icaruschests.gui.GuiFactory;
+import dev.icaro.icaruschests.gui.IcarusChestHolder;
+import dev.icaro.icaruschests.gui.NavAction;
+import dev.icaro.icaruschests.gui.SortType;
+import dev.icaro.icaruschests.model.IcarusBackpack;
+import dev.icaro.icaruschests.model.IcarusChest;
+import dev.icaro.icaruschests.model.StorageContainer;
+import dev.icaro.icaruschests.persistence.ChestRepository;
+import dev.icaro.icaruschests.persistence.PersistedUpgrade;
+import dev.icaro.icaruschests.upgrade.UpgradeRegistry;
+import dev.icaro.icaruschests.util.PortugueseItemNames;
+import dev.icaro.icaruschests.upgrade.UpgradeSlots;
+import dev.icaro.icaruschests.upgrade.UpgradeType;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.Sign;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.sign.Side;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.UUID;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
+
+/**
+ * Handles clicks, drags and closes on IcarusChests GUIs:
+ * <ul>
+ *   <li>the scroll buttons sync the visible slots back into the chest before
+ *       redrawing the same inventory at the new offset, no close/reopen, so
+ *       no flicker (see {@link #onHotbarScroll} for why mouse-wheel scrolling
+ *       — the other obvious way to do this — isn't a real alternative);</li>
+ *   <li>the chest's upgrade slots accept dragging a matching upgrade item in
+ *       (installs it) or clicking with an empty cursor (removes it back to
+ *       the cursor) — removing an installed Stack upgrade is refused (with a
+ *       message naming what's blocking it) if some stored stack would end up
+ *       over the item's normal limit without it;</li>
+ *   <li>a chest with a Filter upgrade installed only accepts item types on
+ *       that Filter's own configured list (see {@code FilterConfigListener}
+ *       — an unconfigured Filter accepts anything), and one with a Stack
+ *       upgrade lets an existing stack keep growing past the item's normal
+ *       limit, up to that tier's multiplier (see {@code UpgradeType}) — both
+ *       cover left/right clicks and shift-clicks from the player's own
+ *       inventory, and dragging is at least blocked by the Filter; a slot
+ *       whose true amount already exceeds its normal max stack only ever
+ *       accepts a left/right click that either withdraws from it (empty
+ *       cursor) or tops it off with more of the *same* item — any other
+ *       interaction (number-key swap, double-click collect, drop, swap to
+ *       offhand, or a left/right-click holding a *different* item) is
+ *       refused outright, so none of them can desync the client's view of it
+ *       from what the chest actually holds (see {@link
+ *       #handleContentSlotClick}).</li>
+ *   <li>a slot holding more than an item's normal max stack (a Stack
+ *       upgrade) is never handed to the client at its real amount — see
+ *       {@code GuiFactory#populate}/{@code #displayItemFor}, which caps what
+ *       the player actually sees just below that normal max (one short of
+ *       it, so it never reads as a genuinely full stack — see that
+ *       method's own Javadoc for why Bedrock specifically needs that
+ *       headroom) and spells out the true count in a lore line instead,
+ *       since Minecraft's item format won't let a real stack claim a size
+ *       above 99 (the {@code minecraft:max_stack_size} data component,
+ *       since the 1.20.5 item rewrite) — {@code chest.getContents()} keeps
+ *       the real number.</li>
+ * </ul>
+ */
+public final class ChestGuiListener implements Listener {
+
+    private final ChestManager chestManager;
+    private final BackpackManager backpackManager;
+    private final ChestRepository chestRepository;
+    private final Plugin plugin;
+    /** Players with a Search sign currently open — see {@link #openSearchSign}/{@link PendingSearch}. */
+    private final Map<UUID, PendingSearch> pendingSearches = new HashMap<>();
+
+    public ChestGuiListener(ChestManager chestManager, BackpackManager backpackManager,
+                             ChestRepository chestRepository, Plugin plugin) {
+        this.chestManager = chestManager;
+        this.backpackManager = backpackManager;
+        this.chestRepository = chestRepository;
+        this.plugin = plugin;
+    }
+
+    /**
+     * A GUI's {@code chestId} might name either a placed chest or a portable backpack — the same
+     * {@link IcarusChestHolder} serves both (see {@code GuiFactory}) — so every lookup here checks
+     * both managers rather than assuming which kind it is.
+     */
+    private Optional<StorageContainer> resolveContainer(UUID id) {
+        Optional<IcarusChest> chest = chestManager.get(id);
+        if (chest.isPresent()) {
+            return Optional.of(chest.get());
+        }
+        Optional<IcarusBackpack> backpack = backpackManager.get(id);
+        return backpack.isPresent() ? Optional.of(backpack.get()) : Optional.empty();
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryClick(InventoryClickEvent event) {
+        Inventory topInventory = event.getView().getTopInventory();
+        if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+        StorageContainer chest = maybeChest.get();
+
+        if (event.getClickedInventory() != topInventory) {
+            // A click in the player's OWN inventory — the only one of these that can put a new
+            // item into the chest is a shift-click, so that's the only one Filter/Stack need to
+            // watch for here; anything else (a plain click reordering the player's own items)
+            // never touches the chest at all.
+            if (event.getClick() == ClickType.SHIFT_LEFT || event.getClick() == ClickType.SHIFT_RIGHT) {
+                handleShiftDeposit(event, holder, chest);
+            }
+            return;
+        }
+
+        int slot = event.getSlot();
+
+        if (!GuiFactory.isControlSlot(chest, slot)) {
+            handleContentSlotClick(event, holder, chest);
+            return;
+        }
+
+        OptionalInt upgradeSlot = GuiFactory.upgradeSlotIndex(chest, slot);
+        if (upgradeSlot.isPresent()) {
+            event.setCancelled(true);
+            handleUpgradeSlotClick(event, holder, chest, upgradeSlot.getAsInt());
+            return;
+        }
+
+        event.setCancelled(true);
+        Optional<ControlButton> controlButton = GuiFactory.controlButtonAction(event.getCurrentItem());
+        if (controlButton.isPresent()) {
+            handleControlButtonClick(event, holder, chest, controlButton.get());
+            return;
+        }
+
+        // The rest of the control row (scroll buttons, indicator, filler) is off-limits either way.
+        handleNavClick(event, holder, chest, topInventory);
+    }
+
+    /**
+     * Search opens a sign for the player to type into. Organize never opens a second screen —
+     * closing one inventory to immediately reopen another from inside that close's own event
+     * handling is a known source of Paper instability (confirmed: it's what actually crashed the
+     * server here) — so a click sorts {@code chest.getContents()} in place, right where the click
+     * happened, and redraws with {@link GuiFactory#populate}, exactly like scrolling or an upgrade
+     * install/removal already do. Silent by design — no chat message — since the redrawn contents
+     * and the button's own lore already show the result. {@code holder}'s {@link
+     * IcarusChestHolder#getCurrentSortType()} only advances to the next {@link SortType} *after*
+     * that redraw, so the lore always names what the chest is now actually organized by, never a
+     * preview of the click after next — see {@code GuiFactory#controlButtonItem}.
+     */
+    private void handleControlButtonClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, ControlButton button) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        switch (button) {
+            case SEARCH -> openSearchSign(player, chest);
+            case ORGANIZE -> {
+                Inventory topInventory = event.getView().getTopInventory();
+                GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+                sortChest(chest, holder.getCurrentSortType());
+                GuiFactory.populate(chest, holder, topInventory);
+                GuiFactory.advanceSortType(holder);
+            }
+        }
+    }
+
+    /**
+     * Sorts {@code chest.getContents()} — the *entire* array, including whatever's currently
+     * scrolled out of view — under {@code type}, moving every empty slot to the end. Reads straight
+     * off the authoritative array, so a Stack-upgraded slot's true amount (never the display-capped
+     * stand-in {@code GuiFactory} hands the client) is what actually gets compared/ordered.
+     */
+    private void sortChest(StorageContainer chest, SortType type) {
+        ItemStack[] contents = chest.getContents();
+        List<ItemStack> items = new ArrayList<>(contents.length);
+        for (ItemStack item : contents) {
+            if (item != null && item.getType() != Material.AIR) {
+                items.add(item);
+            }
+        }
+        items.sort(type.comparator()); // List.sort is a stable sort: ties keep their original order
+
+        ItemStack[] sorted = new ItemStack[contents.length];
+        for (int i = 0; i < items.size(); i++) {
+            sorted[i] = items.get(i);
+        }
+        chest.setContents(sorted);
+        chest.setDirty(true);
+    }
+
+    /** How long a Search sign stays "pending" before its block is force-reverted — see {@link #openSearchSign}. */
+    private static final long SEARCH_SIGN_TIMEOUT_TICKS = 20L * 60; // 60 seconds
+
+    /**
+     * Which chest a Search sign should reorder once submitted, and how to put the real block back
+     * once the player is actually done with it — see {@link #openSearchSign}.
+     */
+    private record PendingSearch(UUID chestId, Block block, BlockData originalData) {
+    }
+
+    /**
+     * Opens a sign editor for the player to type a search query into.
+     *
+     * <p>A fully "detached" sign (built via {@code BlockData.createBlockState()}, never tied to a
+     * real world location) was tried first, but Paper's own {@code CraftSign.openSign} unconditionally
+     * requires {@code sign.isPlaced()} — a detached one throws {@code IllegalArgumentException}
+     * immediately, silently (visible only in the server console, never to the player), which is
+     * exactly why nothing appeared to open at all. There's no way to get a genuine sign editor
+     * screen without a really-placed sign block, so this briefly turns the block right under the
+     * player into one and opens it — this is the same trick most "type free text via a sign" plugins
+     * use, since the public API offers no fully virtual alternative.
+     *
+     * <p>The real block is put back only once the player is actually done — on submit (see {@link
+     * #onSignChange}) or, failing that, once {@link #SEARCH_SIGN_TIMEOUT_TICKS} elapses — never
+     * sooner: a first attempt reverted it one tick after opening, and the client immediately closed
+     * the editor the moment it saw its own sign change out from under it mid-edit, before the player
+     * could type anything at all. Bukkit has no public event for "the player dismissed the sign
+     * editor without submitting it" — only a real submission fires {@link SignChangeEvent} — so
+     * that timeout is also what keeps a player who backs out (Esc) from leaving the real block
+     * stuck as a sign forever, and from having the *next* real sign they edit anywhere get silently
+     * hijacked as a leftover search query.
+     */
+    private void openSearchSign(Player player, StorageContainer chest) {
+        UUID playerId = player.getUniqueId();
+        player.closeInventory(); // flush the chest's own content (see onInventoryClose) before switching screens
+
+        // Two blocks above the player's feet — outside their own 2-block-tall hitbox — never the
+        // block they're actually standing on. An earlier version used the block right below their
+        // feet, which briefly removed the ground's solid collision out from under them: a sign has
+        // none of its own, so the player just sank into the now-empty space until the revert put
+        // the real block back. Nothing stands *on top of* a player's head, so swapping this one out
+        // for a few seconds can't cause the same kind of fall.
+        Block block = player.getLocation().getBlock().getRelative(BlockFace.UP, 2);
+        BlockData originalData = block.getBlockData();
+        block.setType(Material.OAK_SIGN, false); // no physics: skip the "needs support" check entirely
+        Sign sign = (Sign) block.getState();
+
+        PendingSearch pending = new PendingSearch(chest.getId(), block, originalData);
+        pendingSearches.put(playerId, pending);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            // Only revert if this exact attempt is still the pending one — onSignChange already
+            // reverted and cleared it if the player submitted before the timeout fired.
+            if (pendingSearches.remove(playerId, pending)) {
+                block.setBlockData(originalData, false);
+            }
+        }, SEARCH_SIGN_TIMEOUT_TICKS);
+
+        player.openSign(sign, Side.FRONT);
+    }
+
+    @EventHandler
+    public void onSignChange(SignChangeEvent event) {
+        Player player = event.getPlayer();
+        PendingSearch pending = pendingSearches.remove(player.getUniqueId());
+        if (pending == null) {
+            return; // an ordinary sign somewhere in the world, not one of ours
+        }
+        event.setCancelled(true); // this sign was only ever temporary — never let the edit actually save
+        pending.block().setBlockData(pending.originalData(), false);
+        Optional<StorageContainer> maybeChest = resolveContainer(pending.chestId());
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+        StorageContainer chest = maybeChest.get();
+        String query = (nullToEmpty(event.getLine(0)) + " " + nullToEmpty(event.getLine(1)) + " "
+                + nullToEmpty(event.getLine(2)) + " " + nullToEmpty(event.getLine(3))).trim();
+        if (!query.isEmpty()) {
+            performSearch(chest, query);
+        }
+        GuiFactory.open(player, chest);
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
+     * Brings every item matching {@code query} to the front of {@code chest.getContents()} — the
+     * *entire* array, including whatever's currently scrolled out of view — preserving each group's
+     * relative order (a stable partition), then reopens the GUI scrolled to the top where they now
+     * are. Does nothing if nothing matches, rather than needlessly shuffling the chest.
+     */
+    private void performSearch(StorageContainer chest, String query) {
+        String queryLower = query.toLowerCase(Locale.ROOT);
+        ItemStack[] contents = chest.getContents();
+        List<ItemStack> matches = new ArrayList<>();
+        List<ItemStack> rest = new ArrayList<>();
+        for (ItemStack item : contents) {
+            if (item == null || item.getType() == Material.AIR) {
+                continue;
+            }
+            (matchesSearch(item, queryLower) ? matches : rest).add(item);
+        }
+        if (matches.isEmpty()) {
+            return;
+        }
+        ItemStack[] reordered = new ItemStack[contents.length];
+        int index = 0;
+        for (ItemStack item : matches) {
+            reordered[index++] = item;
+        }
+        for (ItemStack item : rest) {
+            reordered[index++] = item;
+        }
+        chest.setContents(reordered);
+        chest.setDirty(true);
+    }
+
+    /**
+     * Matches against the item's own custom name (if renamed), its Portuguese in-game name, its
+     * pretty English material name, and its raw enum name — in that order, since most players
+     * here will naturally type the Portuguese name they actually see in their own client, which
+     * Bukkit itself has no idea about (the server never learns a client's translated strings, only
+     * its locale code) unless it's looked up in a bundled table (see {@link PortugueseItemNames}).
+     */
+    private boolean matchesSearch(ItemStack item, String queryLower) {
+        if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+            String customName = PlainTextComponentSerializer.plainText()
+                    .serialize(item.getItemMeta().displayName())
+                    .toLowerCase(Locale.ROOT);
+            if (customName.contains(queryLower)) {
+                return true;
+            }
+        }
+        Optional<String> ptName = PortugueseItemNames.of(item.getType());
+        if (ptName.isPresent() && ptName.get().toLowerCase(Locale.ROOT).contains(queryLower)) {
+            return true;
+        }
+        if (UpgradeRegistry.prettyName(item.getType()).toLowerCase(Locale.ROOT).contains(queryLower)) {
+            return true;
+        }
+        String rawName = item.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return rawName.contains(queryLower);
+    }
+
+    /**
+     * A drag can smear a held stack across several content slots at once — vanilla's own math
+     * already keeps each slot within the item's normal limit (a drag can't reach a Stack
+     * upgrade's higher cap; that only happens via the single-slot paths above), so the only thing
+     * left to enforce here is the Filter: cancel the whole drag if it touches the chest's content
+     * area with a disallowed item type.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        Inventory topInventory = event.getView().getTopInventory();
+        if (!(topInventory.getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+        StorageContainer chest = maybeChest.get();
+
+        boolean touchesContent = event.getRawSlots().stream()
+                .anyMatch(rawSlot -> rawSlot < topInventory.getSize() && !GuiFactory.isControlSlot(chest, rawSlot));
+        if (!touchesContent) {
+            return;
+        }
+
+        UpgradeSlots.filterItem(chest.getUpgrades()).ifPresent(filterItem -> {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem);
+            if (!accepted.isEmpty() && !accepted.contains(event.getOldCursor().getType())) {
+                event.setCancelled(true);
+            }
+        });
+    }
+
+    private void handleNavClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, Inventory topInventory) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        Optional<NavAction> action = GuiFactory.navAction(event.getCurrentItem());
+        if (action.isEmpty()) {
+            return;
+        }
+        scroll(player, chest, holder, topInventory, action.get());
+    }
+
+    private void scroll(Player player, StorageContainer chest, IcarusChestHolder holder, Inventory topInventory, NavAction action) {
+        int newOffset = GuiFactory.scrollTarget(chest, holder.getScrollOffset(), action);
+        if (newOffset == holder.getScrollOffset()) {
+            return; // already at that edge
+        }
+        GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+        GuiFactory.scrollTo(chest, holder, topInventory, newOffset);
+    }
+
+    private void handleUpgradeSlotClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest, int slotIndex) {
+        // Installing/removing an upgrade always ends in a full populate() (below), which redraws
+        // every content slot straight from chest.getContents() — flush the *current* live view into
+        // that array first, or an item the player just picked up from some other content slot a
+        // moment ago (via vanilla's own, uncancelled handling, not yet synced back) would get
+        // silently overwritten by its own stale pre-pickup value and reappear, while the player also
+        // keeps the copy they just picked up: a duplicate.
+        GuiFactory.syncVisibleToChest(chest, holder, event.getView().getTopInventory());
+        ItemStack[] upgrades = chest.getUpgrades();
+        ItemStack installed = upgrades[slotIndex];
+        ItemStack cursor = event.getCursor();
+        boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
+
+        if (installed == null) {
+            if (cursorEmpty) {
+                return; // nothing to install, nothing to remove
+            }
+            Optional<UpgradeType> type = UpgradeRegistry.typeOf(cursor);
+            if (type.isEmpty()) {
+                return; // whatever's on the cursor isn't an upgrade item
+            }
+            ItemStack toInstall = cursor.clone();
+            toInstall.setAmount(1);
+            upgrades[slotIndex] = toInstall;
+
+            int remaining = cursor.getAmount() - 1;
+            event.setCursor(remaining > 0 ? withAmount(cursor, remaining) : null);
+        } else if (cursorEmpty) {
+            Optional<UpgradeType> installedType = UpgradeRegistry.typeOf(installed);
+            if (installedType.isPresent() && installedType.get().isStackUpgrade()) {
+                double multiplierWithoutThis = UpgradeSlots.bestStackMultiplierExcluding(upgrades, slotIndex);
+                List<ItemStack> blocking = itemsOverCap(chest, multiplierWithoutThis);
+                if (!blocking.isEmpty()) {
+                    if (event.getWhoClicked() instanceof Player player) {
+                        player.sendMessage(blockingRemovalMessage(blocking));
+                    }
+                    return; // refuse the removal; nothing changes
+                }
+            }
+            upgrades[slotIndex] = null;
+            event.setCursor(installed);
+        } else {
+            return; // slot occupied and cursor holds something else: no-op, already cancelled
+        }
+
+        persistUpgrades(chest);
+        GuiFactory.populate(chest, holder, event.getView().getTopInventory());
+    }
+
+    /** Stored items that would exceed their own normal stack limit under {@code multiplier} — used to guard removing a Stack upgrade. */
+    private List<ItemStack> itemsOverCap(StorageContainer chest, double multiplier) {
+        List<ItemStack> blocking = new ArrayList<>();
+        for (ItemStack item : chest.getContents()) {
+            if (item == null || item.getType() == Material.AIR) {
+                continue;
+            }
+            int cap = (int) Math.floor(item.getMaxStackSize() * multiplier);
+            if (item.getAmount() > cap) {
+                blocking.add(item);
+            }
+        }
+        return blocking;
+    }
+
+    private Component blockingRemovalMessage(List<ItemStack> blocking) {
+        String itemList = blocking.stream()
+                .map(item -> item.getAmount() + "x " + UpgradeRegistry.prettyName(item.getType()))
+                .collect(Collectors.joining(", "));
+        return Component.text("Não é possível remover: sem esse upgrade, isso passaria do limite normal: " + itemList,
+                NamedTextColor.RED);
+    }
+
+    private void persistUpgrades(StorageContainer chest) {
+        Map<Integer, PersistedUpgrade> bySlot = new HashMap<>();
+        ItemStack[] upgrades = chest.getUpgrades();
+        for (int i = 0; i < upgrades.length; i++) {
+            int slotIndex = i;
+            UpgradeRegistry.typeOf(upgrades[i]).ifPresent(type -> {
+                String dataJson = type == UpgradeType.FILTER
+                        ? UpgradeRegistry.encodeFilterMaterials(UpgradeRegistry.filterMaterials(upgrades[slotIndex]))
+                        : null;
+                bySlot.put(slotIndex, new PersistedUpgrade(type.name(), dataJson));
+            });
+        }
+        chestRepository.saveUpgrades(chest.getId(), bySlot).exceptionally(ex -> {
+            plugin.getLogger().log(Level.WARNING, "Falha ao persistir upgrades do bau " + chest.getId(), ex);
+            return null;
+        });
+    }
+
+    /**
+     * Deliberately never touches {@code event.setCurrentItem()} for the slot itself — it mutates
+     * {@code chest.getContents()} (the authoritative array) directly and redraws the whole
+     * visible window from it via {@link GuiFactory#populate}, exactly like scrolling and
+     * installing/removing an upgrade already do. That's what actually gets an amount past 64 to
+     * reliably show up: patching the click's own slot through the event was found to be lossy —
+     * whatever the live view showed at the next scroll/close, right or stale, is what {@code
+     * syncVisibleToChest} would persist, so the two could disagree on what the slot really held.
+     *
+     * <p>For that same reason, every path here that ends in a {@code populate()} redraw first flushes
+     * the *current* live view into {@code chest.getContents()} via {@code syncVisibleToChest} — a
+     * plain, uncancelled pickup from some other content slot a moment earlier (vanilla's own normal
+     * handling; nothing here cancels or syncs it) only updates the live view, not the array, until a
+     * scroll/close does. Skipping that flush before a populate() here would redraw straight from the
+     * array's stale pre-pickup value, making that other item reappear in the chest while the player
+     * also keeps the copy they already picked up — a duplicate.
+     */
+    private void handleContentSlotClick(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest) {
+        Inventory topInventory = event.getView().getTopInventory();
+        GuiFactory.syncVisibleToChest(chest, holder, topInventory);
+        int globalIndex = holder.getScrollOffset() + event.getSlot();
+        ItemStack[] contents = chest.getContents();
+        ItemStack slotItem = contents[globalIndex];
+        boolean overstacked = slotItem != null && slotItem.getType() != Material.AIR
+                && slotItem.getAmount() > slotItem.getMaxStackSize();
+
+        ClickType click = event.getClick();
+        if (click == ClickType.SHIFT_LEFT || click == ClickType.SHIFT_RIGHT) {
+            if (overstacked) {
+                // A normal-sized stack shift-transfers fine via vanilla's own logic, but an
+                // overstacked one needs the same "at most one normal stack per interaction" rule as
+                // a plain left-click withdrawal (below) — vanilla's shift-transfer knows nothing
+                // about that and would otherwise try to move the slot's *entire* true amount out in
+                // one go.
+                handleOverstackedShiftWithdraw(event, holder, chest, globalIndex, slotItem);
+            }
+            return;
+        }
+        if (click != ClickType.LEFT && click != ClickType.RIGHT) {
+            if (overstacked) {
+                // Every other interaction (number-key swap, double-click collect, drop, swap to
+                // offhand, …) assumes a slot's amount never exceeds its normal max stack — letting
+                // one through here risks the client's own idea of this slot and the authoritative
+                // array disagreeing about what a Stack-upgraded stack really holds. Left/right-click
+                // and shift-click (both above) are the only supported ways to touch one.
+                event.setCancelled(true);
+            }
+            return; // Filter/Stack cover left/right clicks and shift-clicks (see handleShiftDeposit); drag is handled separately
+        }
+        double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
+        boolean stackUpgraded = stackMultiplier > 1.0;
+        Optional<ItemStack> filterItem = UpgradeSlots.filterItem(chest.getUpgrades());
+        if (!stackUpgraded && filterItem.isEmpty()) {
+            return;
+        }
+
+        ItemStack cursor = event.getCursor();
+        boolean cursorEmpty = cursor == null || cursor.getType() == Material.AIR;
+        boolean slotEmpty = slotItem == null || slotItem.getType() == Material.AIR;
+
+        if (stackUpgraded && cursorEmpty && !slotEmpty && overstacked) {
+            // Withdraw at most a normal stack at a time, leaving the rest — same as the mod this
+            // plugin is inspired by. Right-click's own "take half" still can't exceed that either.
+            event.setCancelled(true);
+            int taking = click == ClickType.LEFT
+                    ? Math.min(slotItem.getMaxStackSize(), slotItem.getAmount())
+                    : Math.min(slotItem.getMaxStackSize(), (slotItem.getAmount() + 1) / 2);
+            int remaining = slotItem.getAmount() - taking;
+            contents[globalIndex] = remaining > 0 ? withAmount(slotItem, remaining) : null;
+            event.setCursor(withAmount(slotItem, taking));
+            chest.setDirty(true);
+            GuiFactory.populate(chest, holder, topInventory);
+            return;
+        }
+
+        if (cursorEmpty) {
+            return; // a plain pickup vanilla can already handle correctly
+        }
+
+        if (overstacked && !slotItem.isSimilar(cursor)) {
+            // The slot holds more than a normal stack of a *different* item than what's on the
+            // cursor. Vanilla's default left/right-click here would swap the cursor and the slot —
+            // but that swap only ever touches the live view, never chest.getContents(); the real,
+            // overstacked item would stay stranded in the authoritative array and come right back
+            // on the next populate(), while the player also walks away with what they just
+            // "swapped" in — a duplicate. Withdraw the whole overstacked stack first (see above),
+            // then place the new item once the slot is actually empty.
+            event.setCancelled(true);
+            return;
+        }
+
+        if (filterItem.isPresent()) {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem.get());
+            if (!accepted.isEmpty() && !accepted.contains(cursor.getType())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+
+        if (stackUpgraded && !slotEmpty && slotItem.isSimilar(cursor)) {
+            int cap = (int) Math.floor(slotItem.getMaxStackSize() * stackMultiplier);
+            int spaceLeft = cap - slotItem.getAmount();
+            if (spaceLeft <= 0) {
+                event.setCancelled(true);
+                return;
+            }
+            int normalRoom = slotItem.getMaxStackSize() - slotItem.getAmount();
+            int depositAmount = click == ClickType.LEFT ? cursor.getAmount() : 1; // right-click deposits exactly 1
+            if (depositAmount <= normalRoom) {
+                return; // within vanilla's own normal limit already; let default handling proceed
+            }
+            event.setCancelled(true);
+            int toMove = Math.min(spaceLeft, depositAmount);
+            contents[globalIndex] = withAmount(slotItem, slotItem.getAmount() + toMove);
+            int cursorRemaining = cursor.getAmount() - toMove;
+            event.setCursor(cursorRemaining > 0 ? withAmount(cursor, cursorRemaining) : null);
+            chest.setDirty(true);
+            GuiFactory.populate(chest, holder, topInventory);
+        }
+    }
+
+    /**
+     * Withdraws at most one normal stack from an overstacked slot straight into the player's own
+     * inventory — the same cap a plain left-click withdrawal enforces, just handed to the
+     * inventory instead of the cursor, since shift-click has no cursor to give it to. If the
+     * inventory has no room at all, nothing is taken; if it only partially fits, only what actually
+     * landed is removed from the chest, so nothing is ever lost to a full inventory.
+     */
+    private void handleOverstackedShiftWithdraw(InventoryClickEvent event, IcarusChestHolder holder,
+                                                 StorageContainer chest, int globalIndex, ItemStack slotItem) {
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        int taking = Math.min(slotItem.getMaxStackSize(), slotItem.getAmount());
+        Map<Integer, ItemStack> notAdded = player.getInventory().addItem(withAmount(slotItem, taking));
+        int leftoverAmount = notAdded.values().stream().mapToInt(ItemStack::getAmount).sum();
+        int actuallyMoved = taking - leftoverAmount;
+        if (actuallyMoved <= 0) {
+            return; // inventory is completely full: nothing changes
+        }
+        ItemStack[] contents = chest.getContents();
+        int remaining = slotItem.getAmount() - actuallyMoved;
+        contents[globalIndex] = remaining > 0 ? withAmount(slotItem, remaining) : null;
+        chest.setDirty(true);
+        GuiFactory.populate(chest, holder, event.getView().getTopInventory());
+    }
+
+    /**
+     * A shift-click from the player's own inventory hands the whole clicked stack to vanilla's
+     * own "find a slot for this" logic, which knows nothing about the Filter or a Stack upgrade's
+     * higher cap — so when either is active, this takes over that distribution by hand instead.
+     */
+    private void handleShiftDeposit(InventoryClickEvent event, IcarusChestHolder holder, StorageContainer chest) {
+        double stackMultiplier = UpgradeSlots.bestStackMultiplier(chest.getUpgrades());
+        boolean stackUpgraded = stackMultiplier > 1.0;
+        Optional<ItemStack> filterItem = UpgradeSlots.filterItem(chest.getUpgrades());
+        if (!stackUpgraded && filterItem.isEmpty()) {
+            return; // no special rule active; vanilla's own shift-transfer is already correct
+        }
+
+        ItemStack shifted = event.getCurrentItem();
+        if (shifted == null || shifted.getType() == Material.AIR) {
+            return;
+        }
+
+        if (filterItem.isPresent()) {
+            List<Material> accepted = UpgradeRegistry.filterMaterials(filterItem.get());
+            if (!accepted.isEmpty() && !accepted.contains(shifted.getType())) {
+                event.setCancelled(true); // wrong item type: block the shift-click entirely
+                return;
+            }
+        }
+
+        if (!stackUpgraded) {
+            return; // filter allows it and there's no higher cap to respect: vanilla's transfer is fine
+        }
+
+        event.setCancelled(true);
+        // This ends in a populate() (below), which redraws every content slot straight from
+        // chest.getContents() — flush the *current* live view into that array first, same reason as
+        // handleContentSlotClick: an item picked up from some other content slot a moment ago via
+        // vanilla's own, uncancelled handling only updated the live view, not the array yet, and a
+        // populate() without this flush would make it reappear in the chest as a duplicate.
+        GuiFactory.syncVisibleToChest(chest, holder, event.getView().getTopInventory());
+        int insertedAmount = UpgradeSlots.insertRespectingStackCap(chest.getContents(), stackMultiplier, shifted);
+        if (insertedAmount <= 0) {
+            return; // chest is entirely full even at the upgraded cap; nothing moved
+        }
+        chest.setDirty(true);
+        int remaining = shifted.getAmount() - insertedAmount;
+        event.setCurrentItem(remaining > 0 ? withAmount(shifted, remaining) : null);
+        GuiFactory.populate(chest, holder, event.getView().getTopInventory());
+    }
+
+    private static ItemStack withAmount(ItemStack base, int amount) {
+        ItemStack copy = base.clone();
+        copy.setAmount(amount);
+        return copy;
+    }
+
+    /**
+     * Attempts to repurpose hotbar-slot scrolling (mouse wheel, or a direct
+     * number-key press) as GUI scrolling while an IcarusChests window is
+     * open, since Minecraft doesn't expose a real scrollbar widget to
+     * server-controlled container screens. Confirmed (in-game, by the user)
+     * to be a dead end on a standard client: scrolling the mouse wheel while
+     * any container screen is open doesn't change the selected hotbar slot
+     * at all — the client itself never sends the slot-change packet this
+     * event depends on, so no server-side plugin can detect that scroll no
+     * matter what. Left in (harmless, just unreachable) in case some client
+     * setup does still send it; the clickable arrows in the control row are
+     * the one navigation path guaranteed to work.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onHotbarScroll(PlayerItemHeldEvent event) {
+        Player player = event.getPlayer();
+        if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        Optional<StorageContainer> maybeChest = resolveContainer(holder.getChestId());
+        if (maybeChest.isEmpty()) {
+            return;
+        }
+
+        event.setCancelled(true);
+        int forwardDelta = Math.floorMod(event.getNewSlot() - event.getPreviousSlot(), 9);
+        NavAction action;
+        if (forwardDelta == 1) {
+            action = NavAction.SCROLL_DOWN;
+        } else if (forwardDelta == 8) {
+            action = NavAction.SCROLL_UP;
+        } else {
+            return;
+        }
+
+        scroll(player, maybeChest.get(), holder, player.getOpenInventory().getTopInventory(), action);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getInventory().getHolder() instanceof IcarusChestHolder holder)) {
+            return;
+        }
+        Inventory inventory = event.getInventory();
+        resolveContainer(holder.getChestId()).ifPresent(chest ->
+                GuiFactory.syncVisibleToChest(chest, holder, inventory));
+        // A tick later, not right here: this event's own viewer list may not have dropped the
+        // player who just closed it yet, and forgetIfEmpty must only ever see the *true* final
+        // count — freeing this shared Inventory one tick early, while it still has a viewer,
+        // would let the next opener build a second, independent one for the same container again,
+        // right back to the split this sharing was meant to remove (see GuiFactory#open's docs).
+        Bukkit.getScheduler().runTask(plugin, () -> GuiFactory.forgetIfEmpty(holder.getChestId(), inventory));
+    }
+}

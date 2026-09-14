@@ -1,0 +1,85 @@
+package dev.icaro.icaruschests.util;
+
+import org.bukkit.NamespacedKey;
+import org.bukkit.plugin.java.JavaPlugin;
+
+/**
+ * Central registry of {@link NamespacedKey}s used to tag blocks and items
+ * with plugin-owned {@code PersistentDataContainer} data. Must be
+ * {@link #init(JavaPlugin)}-ed once during {@code onEnable} before any key
+ * is read.
+ */
+public final class NamespacedKeys {
+
+    private NamespacedKeys() {
+    }
+
+    /** Tag on a chest tile entity's PDC identifying its {@code ChestTier} ordinal. */
+    public static NamespacedKey TIER;
+
+    /** Tag on a chest tile entity's PDC identifying its unique {@code IcarusChest} id (UUID string). */
+    public static NamespacedKey CHEST_ID;
+
+    /** Tag on an upgrade kit item's PDC identifying the target {@code ChestTier} ordinal. */
+    public static NamespacedKey UPGRADE_KIT_TIER;
+
+    /** Tag on a GUI navigation button item's PDC identifying it as a page-switch control. */
+    public static NamespacedKey NAV_ACTION;
+
+    /**
+     * Tag on a double chest's secondary half pointing at its primary's
+     * encoded {@code ChestLocation} (see {@link dev.icaro.icaruschests.model.ChestLocation#encode()}).
+     * A block carrying this tag has no {@link #CHEST_ID}/{@link #TIER} of its
+     * own — it always resolves through to the primary.
+     */
+    public static NamespacedKey LINK_TARGET;
+
+    /** Tag on a double chest primary's own PDC: {@code 1} while it has a linked secondary, absent/{@code 0} otherwise. */
+    public static NamespacedKey DOUBLED;
+
+    /** Tag on a pluggable upgrade item's PDC identifying its {@code UpgradeType} name. */
+    public static NamespacedKey UPGRADE_TYPE;
+
+    /** Tag on a Filter upgrade item's PDC: comma-separated {@code Material} names it accepts. Absent/empty means it accepts anything. */
+    public static NamespacedKey FILTER_ITEMS;
+
+    /** Tag on the recipe detail screen's "back to index" button's PDC: always {@code "back"} when present. */
+    public static NamespacedKey RECIPE_NAV;
+
+    /** Tag on a recipe index screen's icon PDC identifying which built {@code RecipeBookEntry} (by list position) it opens. */
+    public static NamespacedKey RECIPE_ENTRY_INDEX;
+
+    /** Tag on a chest GUI's control-row Search/Organize button's PDC: {@code "search"} or {@code "organize"}. */
+    public static NamespacedKey CONTROL_BUTTON;
+
+    /** Tag on a backpack item's PDC identifying its unique {@code IcarusBackpack} id (UUID string) — its identity lives on the item, not a block. */
+    public static NamespacedKey BACKPACK_ID;
+
+    /** Tag on a backpack item's PDC identifying its {@code BackpackTier} ordinal. */
+    public static NamespacedKey BACKPACK_TIER;
+
+    /**
+     * Tag on a starter kit item's PDC (see {@code StarterChestRegistry}): present (value {@code
+     * 1}) only on the kit crafted from a chest + redstone — the one and only item that, applied
+     * to an existing plain chest, turns it into a brand-new IcarusChest. A plain chest is never
+     * touched on its own; it only becomes one of ours when this kit is used on it.
+     */
+    public static NamespacedKey CHEST_STARTER;
+
+    public static void init(JavaPlugin plugin) {
+        TIER = new NamespacedKey(plugin, "tier");
+        CHEST_ID = new NamespacedKey(plugin, "chest_id");
+        UPGRADE_KIT_TIER = new NamespacedKey(plugin, "upgrade_kit_tier");
+        NAV_ACTION = new NamespacedKey(plugin, "nav_action");
+        LINK_TARGET = new NamespacedKey(plugin, "link_target");
+        DOUBLED = new NamespacedKey(plugin, "doubled");
+        UPGRADE_TYPE = new NamespacedKey(plugin, "upgrade_type");
+        FILTER_ITEMS = new NamespacedKey(plugin, "filter_items");
+        RECIPE_NAV = new NamespacedKey(plugin, "recipe_nav");
+        RECIPE_ENTRY_INDEX = new NamespacedKey(plugin, "recipe_entry_index");
+        CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
+        BACKPACK_ID = new NamespacedKey(plugin, "backpack_id");
+        BACKPACK_TIER = new NamespacedKey(plugin, "backpack_tier");
+        CHEST_STARTER = new NamespacedKey(plugin, "chest_starter");
+    }
+}
