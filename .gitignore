@@ -9,3 +9,8 @@ run/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Instrucoes/convencoes do projeto para o Claude Code - fica so local,
+# nao aparece pro publico no GitHub. Sessoes futuras que clonarem este
+# repo do zero nao vao ve-lo automaticamente.
+CLAUDE.md
