@@ -67,7 +67,7 @@ public final class RecipeBookRegistry {
         return entries;
     }
 
-    /** 1 Chest + 1 Redstone → the starter chest, the only item that turns a placed chest block into an IcarusChest — see {@code ChestPlaceListener}/{@code StarterChestRegistry}. */
+    /** 1 Chest + 1 Redstone → the starter kit, the only item that turns an already-placed plain chest into an IcarusChest — see {@code ChestInteractListener}/{@code StarterChestRegistry}. */
     private RecipeBookEntry chestStarterEntry() {
         Map<Integer, ItemStack> grid = new LinkedHashMap<>();
         grid.put(0, new ItemStack(Material.CHEST));

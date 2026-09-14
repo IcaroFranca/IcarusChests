@@ -21,9 +21,10 @@ import java.util.logging.Level;
 /**
  * Tags a plain {@code Material.CHEST} block as a new {@link IcarusChest} — a fresh standalone
  * primary at {@link ChestTier#NORMAL}, or linked as a double chest's secondary half if adjacent to
- * an existing, still-single primary of the same tier. Used only by {@code ChestPlaceListener},
- * which checks the placed item is a {@code StarterChestRegistry} starter chest before ever calling
- * in here — a plain vanilla chest placed from anywhere else never reaches this class at all.
+ * an existing, still-single primary of the same tier. Used only by {@code ChestInteractListener},
+ * which applies a {@code StarterChestRegistry} kit to an already-placed, not-yet-tagged chest —
+ * see that class for the validation (adjacent plain/mismatched-tier neighbor) that runs before
+ * this is ever called at all.
  */
 public final class ChestTaggingService {
 
@@ -65,9 +66,28 @@ public final class ChestTaggingService {
     }
 
     /**
+     * Whether {@code block} has any horizontally-adjacent {@code Material.CHEST} neighbor that
+     * ISN'T one of ours — the situation that would let vanilla visually/functionally merge a
+     * genuine plain chest with what's about to become (or already is) an IcarusChest, mixing a
+     * real, usable vanilla inventory with the tagged chest's own real inventory (permanently empty
+     * by design). {@code ChestPlaceListener} already keeps this from arising when a plain chest is
+     * placed near an existing IcarusChest; this is the mirror check for the other direction — a
+     * starter kit about to tag a chest that happens to already be next to a plain one.
+     */
+    public boolean hasUntaggedChestNeighbor(Block block) {
+        for (BlockFace face : BlockFaces.HORIZONTAL) {
+            Block neighbor = block.getRelative(face);
+            if (neighbor.getType() == Material.CHEST && !chestManager.isTaggedChest(neighbor)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Tags {@code block} as a new IcarusChest at {@link ChestTier#NORMAL}, or links it as {@code
      * neighborPrimary}'s secondary half if present — callers decide beforehand whether linking is
-     * even allowed at all (see {@code ChestPlaceListener}'s tier-mismatch rejection, which runs
+     * even allowed at all (see {@code ChestInteractListener}'s tier-mismatch rejection, which runs
      * before this is ever called and simply never calls it in that case).
      */
     public void tagChestBlock(Block block, Optional<IcarusChest> neighborPrimary) {

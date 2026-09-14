@@ -59,10 +59,10 @@ public final class NamespacedKeys {
     public static NamespacedKey BACKPACK_TIER;
 
     /**
-     * Tag on a starter chest item's PDC (see {@code StarterChestRegistry}): present (value {@code
-     * 1}) only on the item crafted from a chest + redstone — the one and only item that turns a
-     * placed chest block into a brand-new IcarusChest. A plain chest placed from anywhere else
-     * never carries this and is left completely untouched.
+     * Tag on a starter kit item's PDC (see {@code StarterChestRegistry}): present (value {@code
+     * 1}) only on the kit crafted from a chest + redstone — the one and only item that, applied
+     * to an existing plain chest, turns it into a brand-new IcarusChest. A plain chest is never
+     * touched on its own; it only becomes one of ours when this kit is used on it.
      */
     public static NamespacedKey CHEST_STARTER;
 

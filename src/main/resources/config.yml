@@ -41,3 +41,8 @@ backpack-heads:
   gold: ""
   diamond: ""
   netherite: ""
+
+# O mesmo esquema, mas para o "Baú do IcarusChests" (o kit craftado com Baú +
+# Redstone, usado com shift + botão direito num baú comum já colocado pra
+# tagueá-lo). Deixe vazio pra usar a cabeça padrão que o plugin já traz pronta.
+chest-starter-head: ""

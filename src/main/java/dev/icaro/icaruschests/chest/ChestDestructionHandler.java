@@ -14,12 +14,14 @@ import java.util.logging.Level;
  * Shared "this chest is gone" logic used by both a normal break and an
  * explosion: drops the stored contents (vanilla never knew they existed,
  * since they live in our custom GUI, not the tile entity's own inventory)
- * plus any installed pluggable-upgrade items and a refund of the upgrade kit
- * that got it to its current tier — so breaking an upgraded chest never
+ * plus any installed pluggable-upgrade items, a refund of the {@code
+ * StarterChestRegistry} kit that turned it into an IcarusChest in the first
+ * place, and (above the base tier) a refund of the upgrade kit that got it
+ * to its current tier — so breaking a chest, at any tier, never
  * leaves the player at a material loss — deletes the chest's row from
  * SQLite, and evicts it from {@link ChestManager}. The chest block itself
- * still drops normally via vanilla's own break/explosion handling; nothing
- * here needs to touch that.
+ * still drops normally via vanilla's own break/explosion handling (a plain
+ * chest, same as any other); nothing here needs to touch that.
  *
  * <p>A slot grown past its item's normal max stack by a Stack upgrade is
  * split back into normal-sized dropped stacks (see {@link
@@ -32,13 +34,16 @@ public final class ChestDestructionHandler {
     private final ChestManager chestManager;
     private final ChestRepository chestRepository;
     private final UpgradeKitRegistry upgradeKitRegistry;
+    private final StarterChestRegistry starterChestRegistry;
     private final Plugin plugin;
 
     public ChestDestructionHandler(ChestManager chestManager, ChestRepository chestRepository,
-                                    UpgradeKitRegistry upgradeKitRegistry, Plugin plugin) {
+                                    UpgradeKitRegistry upgradeKitRegistry, StarterChestRegistry starterChestRegistry,
+                                    Plugin plugin) {
         this.chestManager = chestManager;
         this.chestRepository = chestRepository;
         this.upgradeKitRegistry = upgradeKitRegistry;
+        this.starterChestRegistry = starterChestRegistry;
         this.plugin = plugin;
     }
 
@@ -56,6 +61,10 @@ public final class ChestDestructionHandler {
         }
         chest.getTier().upgradeMaterial().ifPresent(ignored ->
                 dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), upgradeKitRegistry.createKit(chest.getTier())));
+        // Every tagged chest, whatever its current tier, was originally made from exactly one of
+        // these — refunded unconditionally, same "never a spend without return" reasoning as the
+        // tier kit above.
+        dropAt.getWorld().dropItemNaturally(dropAt.getLocation(), starterChestRegistry.createStarterChest());
 
         chestRepository.delete(chest.getId()).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING, "Falha ao remover bau " + chest.getId() + " do banco", ex);

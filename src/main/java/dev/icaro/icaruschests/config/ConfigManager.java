@@ -41,6 +41,7 @@ public final class ConfigManager {
     // reason as above — the gui package already depends on config.
     private final Map<String, String> controlHeadTextures = new HashMap<>();
     private final Map<BackpackTier, String> backpackHeadTextures = new EnumMap<>(BackpackTier.class);
+    private String chestStarterHeadTexture = "";
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -98,6 +99,8 @@ public final class ConfigManager {
                 }
             }
         }
+
+        chestStarterHeadTexture = plugin.getConfig().getString("chest-starter-head", "");
     }
 
     /**
@@ -152,6 +155,12 @@ public final class ConfigManager {
         return Optional.ofNullable(backpackHeadTextures.get(tier));
     }
 
+    /** The configured custom-head Base64 texture for the {@code StarterChestRegistry} kit, if the admin set one. */
+    public Optional<String> chestStarterHeadTexture() {
+        return (chestStarterHeadTexture == null || chestStarterHeadTexture.isBlank())
+                ? Optional.empty() : Optional.of(chestStarterHeadTexture.trim());
+    }
+
     /**
      * Every custom-head Base64 texture currently configured, across kit heads, upgrade heads and
      * control-row heads — for exporting to third-party integrations (see {@code
@@ -164,6 +173,7 @@ public final class ConfigManager {
         all.addAll(upgradeHeadTextures.values());
         all.addAll(controlHeadTextures.values());
         all.addAll(backpackHeadTextures.values());
+        chestStarterHeadTexture().ifPresent(all::add);
         return all;
     }
 }

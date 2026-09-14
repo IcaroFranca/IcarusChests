@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-6.0.0-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-7.0.0-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -15,7 +15,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
 ## ✨ Funcionalidades
 
 - **6 tiers de baú**, do Normal ao Netherite, cada um craftável com um kit de upgrade consumível.
-- **Baú do IcarusChests** — 1× Baú + 1× Redstone craftam o item que dá origem a tudo: colocado no mundo, vira um baú tier Normal de verdade. Um baú comum (o craft vanilla de 8 tábuas, um baú de loot, qualquer outro) colocado direto continua 100% vanilla — o plugin nunca converte um baú já existente sozinho, nem os gerados pela geração de mundo.
+- **Baú do IcarusChests** — 1× Baú + 1× Redstone craftam o kit que dá origem a tudo: uma cabeça customizada (igual a qualquer outro kit do plugin) que, usada com shift + botão direito num baú comum já colocado, o transforma num baú tier Normal de verdade. Um baú comum colocado sozinho (craft vanilla de 8 tábuas, loot, o que for) continua 100% vanilla até isso acontecer — o plugin nunca converte um baú existente por conta própria, nem os gerados pela geração de mundo. Quebrar um baú do IcarusChests sempre devolve esse kit (além de qualquer kit de upgrade de tier já aplicado) — nunca é um gasto sem volta.
 - **Baú duplo** de verdade: dois blocos adjacentes do mesmo tier viram uma única unidade lógica.
 - **Upgrades encaixáveis**, instalados direto na GUI do baú:
   - 🔍 **Filtro** — restringe quais itens o baú aceita.
@@ -34,7 +34,7 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
 
 | Tier | Capacidade | Slots de upgrade | Como conseguir |
 |---|---|---|---|
-| Normal | 27 | 1 | 1× Baú + 1× Redstone → coloque o resultado |
+| Normal | 27 | 1 | Baú do IcarusChests (1× Baú + 1× Redstone) — shift + botão direito num baú comum |
 | Cobre | 45 | 1 | Kit de Upgrade: Cobre (8× Lingote de Cobre) |
 | Ferro | 54 | 2 | Kit de Upgrade: Ferro (8× Lingote de Ferro) |
 | Ouro | 81 | 2 | Kit de Upgrade: Ouro (8× Lingote de Ouro) |
@@ -94,6 +94,8 @@ backpack-heads:
   leather: "..."
   copper: "..."
   # ...
+
+chest-starter-head: "..."
 ```
 
 ## 🛠️ Compilando
@@ -118,7 +120,7 @@ Baú e mochila implementam a mesma interface (`StorageContainer`/`StorageTier`):
 - Hoppers só automatizam a entrada de itens num baú com tier, nunca a saída — puxar itens de dentro dele com hopper continua bloqueado (o inventário vanilla do bloco fica sempre vazio de propósito).
 - Stacks acima do limite normal (upgrade Stack) não existem no protocolo do Bedrock — o cliente Bedrock vê o limite normal do item, mesmo que o baú guarde mais por dentro.
 - Nenhuma receita do plugin (kits, upgrades, mochilas) aparece no livro de receitas *vanilla* do Minecraft — todas ficam só no Livro de Receitas próprio do IcarusChests (`/icaruschests recipebook`).
-- Colocar um Baú do IcarusChests direto do lado de um baú comum (não craftado a partir da receita) não os une — vanilla ainda mescla os dois visualmente numa única tela de baú duplo, mas só a metade do IcarusChests é gerenciada pelo plugin; a outra continua um inventário vanilla de verdade, separado do conteúdo mostrado na GUI custom. Evite colocar os dois tipos adjacentes.
+- Um baú do IcarusChests nunca se une a um baú comum (vanilla mesclaria os dois visualmente, misturando um inventário vanilla de verdade com o inventário do baú tageado, que fica sempre vazio de propósito) — colocar um baú comum do lado de um já tageado é bloqueado, e transformar um baú que já está do lado de um comum também é bloqueado, com uma mensagem explicando o motivo.
 
 ## 📜 Créditos
 
