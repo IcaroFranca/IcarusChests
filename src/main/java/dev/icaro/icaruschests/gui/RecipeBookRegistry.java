@@ -1,6 +1,7 @@
 package dev.icaro.icaruschests.gui;
 
 import dev.icaro.icaruschests.backpack.BackpackRegistry;
+import dev.icaro.icaruschests.chest.StarterChestRegistry;
 import dev.icaro.icaruschests.tier.BackpackTier;
 import dev.icaro.icaruschests.tier.ChestTier;
 import dev.icaro.icaruschests.upgrade.UpgradeKitRegistry;
@@ -19,7 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Builds one {@link RecipeBookEntry} per craftable IcarusChests item — every
+ * Builds one {@link RecipeBookEntry} per craftable IcarusChests item — the starter chest, every
  * tier's upgrade kit, every pluggable upgrade, and every backpack recipe
  * (base + tier-ups) — for the in-game recipe book GUI (see {@code
  * RecipeBookIndexGui}/{@code RecipeBookDetailGui}/{@code RecipeBookListener}).
@@ -39,16 +40,20 @@ public final class RecipeBookRegistry {
     private final UpgradeKitRegistry upgradeKitRegistry;
     private final UpgradeRegistry upgradeRegistry;
     private final BackpackRegistry backpackRegistry;
+    private final StarterChestRegistry starterChestRegistry;
 
-    public RecipeBookRegistry(UpgradeKitRegistry upgradeKitRegistry, UpgradeRegistry upgradeRegistry, BackpackRegistry backpackRegistry) {
+    public RecipeBookRegistry(UpgradeKitRegistry upgradeKitRegistry, UpgradeRegistry upgradeRegistry,
+                               BackpackRegistry backpackRegistry, StarterChestRegistry starterChestRegistry) {
         this.upgradeKitRegistry = upgradeKitRegistry;
         this.upgradeRegistry = upgradeRegistry;
         this.backpackRegistry = backpackRegistry;
+        this.starterChestRegistry = starterChestRegistry;
     }
 
-    /** Every known recipe: tier kits, then upgrades, then backpacks (base tier first, then every tier-up in order). */
+    /** Every known recipe: the starter chest first, then tier kits, then upgrades, then backpacks (base tier first, then every tier-up in order). */
     public List<RecipeBookEntry> buildAll() {
         List<RecipeBookEntry> entries = new ArrayList<>();
+        entries.add(chestStarterEntry());
         for (ChestTier tier : ChestTier.values()) {
             tier.upgradeMaterial().ifPresent(material -> entries.add(tierKitEntry(tier, material)));
         }
@@ -60,6 +65,15 @@ public final class RecipeBookRegistry {
             tier.upgradeMaterial().ifPresent(material -> entries.add(backpackTierUpEntry(tier, material)));
         }
         return entries;
+    }
+
+    /** 1 Chest + 1 Redstone → the starter chest, the only item that turns a placed chest block into an IcarusChest — see {@code ChestPlaceListener}/{@code StarterChestRegistry}. */
+    private RecipeBookEntry chestStarterEntry() {
+        Map<Integer, ItemStack> grid = new LinkedHashMap<>();
+        grid.put(0, new ItemStack(Material.CHEST));
+        grid.put(1, new ItemStack(Material.REDSTONE));
+        Component title = Component.text("Baú do IcarusChests", NamedTextColor.LIGHT_PURPLE);
+        return new RecipeBookEntry(title, grid, starterChestRegistry.createStarterChest());
     }
 
     private RecipeBookEntry tierKitEntry(ChestTier tier, Material material) {

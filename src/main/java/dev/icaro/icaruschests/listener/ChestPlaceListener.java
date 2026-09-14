@@ -1,6 +1,7 @@
 package dev.icaro.icaruschests.listener;
 
 import dev.icaro.icaruschests.chest.ChestTaggingService;
+import dev.icaro.icaruschests.chest.StarterChestRegistry;
 import dev.icaro.icaruschests.model.IcarusChest;
 import dev.icaro.icaruschests.tier.ChestTier;
 import net.kyori.adventure.text.Component;
@@ -15,21 +16,21 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import java.util.Optional;
 
 /**
- * Tags every newly placed chest block as an {@link IcarusChest} at
- * {@link ChestTier#NORMAL} and persists its metadata row — unless it's
- * placed directly adjacent to an existing IcarusChest, in which case it
- * either links to it as a double chest's secondary half (same tier, and only
- * if that neighbor doesn't already have a partner — vanilla double chests
- * are always exactly two blocks) or the placement is rejected outright
- * (different tier: vanilla would still visually merge them, which would be
- * misleading since the plugin only ever treats it as a matched-tier
- * pairing). Linking doubles the primary's capacity on the spot.
+ * Tags a newly placed chest block as an {@link IcarusChest} at {@link ChestTier#NORMAL} — but only
+ * when it was placed from a {@link StarterChestRegistry} item (crafted from a plain chest +
+ * redstone). A chest placed from anywhere else — the ordinary 8-plank vanilla recipe, loot,
+ * creative, a dispenser, … — is left completely untouched, a plain vanilla chest through and
+ * through. That's a deliberate scope decision: this plugin never converts a pre-existing or
+ * otherwise-placed chest into one of its own on its own initiative.
  *
- * <p>The actual tagging/linking logic lives in {@link ChestTaggingService},
- * shared with {@code NaturalChestListener} — this class only owns the
- * player-placement-specific parts: rejecting a mismatched-tier neighbor with
- * a cancellation and a message (there's no event to cancel and no player to
- * message for a chest that world generation just created).
+ * <p>A starter chest placed directly adjacent to an existing IcarusChest either links to it as a
+ * double chest's secondary half (same tier, and only if that neighbor doesn't already have a
+ * partner — vanilla double chests are always exactly two blocks) or the placement is rejected
+ * outright (different tier: vanilla would still visually merge them, which would be misleading
+ * since the plugin only ever treats it as a matched-tier pairing). Linking doubles the primary's
+ * capacity on the spot.
+ *
+ * <p>The actual tagging/linking logic lives in {@link ChestTaggingService}.
  */
 public final class ChestPlaceListener implements Listener {
 
@@ -48,6 +49,9 @@ public final class ChestPlaceListener implements Listener {
         if (block.getType() != Material.CHEST) {
             return;
         }
+        if (!StarterChestRegistry.isStarterChest(event.getItemInHand())) {
+            return; // a plain chest, from anywhere — never one of ours
+        }
 
         Optional<IcarusChest> neighborPrimary = taggingService.findAdjacentPrimary(block);
         if (neighborPrimary.isPresent() && neighborPrimary.get().getTier() != ChestTier.NORMAL) {
@@ -58,6 +62,6 @@ public final class ChestPlaceListener implements Listener {
             return;
         }
 
-        taggingService.tagChestBlock(block, neighborPrimary, null);
+        taggingService.tagChestBlock(block, neighborPrimary);
     }
 }

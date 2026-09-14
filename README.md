@@ -3,7 +3,7 @@
 **Baús com tiers, upgrades encaixáveis e mochilas portáteis para servidores Paper — sem exigir nenhum mod do lado do jogador.**
 
 [![Build](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml/badge.svg)](https://github.com/IcaroFranca/IcarusChests/actions/workflows/build.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-5.1.0-blueviolet)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-6.0.0-blueviolet)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-2ecc71)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Bedrock](https://img.shields.io/badge/Bedrock-compat%C3%ADvel%20via%20Geyser-1abc9c)
@@ -14,9 +14,9 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
 
 ## ✨ Funcionalidades
 
-- **6 tiers de baú**, do madeira ao Netherite, cada um craftável com um kit de upgrade consumível.
+- **6 tiers de baú**, do Normal ao Netherite, cada um craftável com um kit de upgrade consumível.
+- **Baú do IcarusChests** — 1× Baú + 1× Redstone craftam o item que dá origem a tudo: colocado no mundo, vira um baú tier Normal de verdade. Um baú comum (o craft vanilla de 8 tábuas, um baú de loot, qualquer outro) colocado direto continua 100% vanilla — o plugin nunca converte um baú já existente sozinho, nem os gerados pela geração de mundo.
 - **Baú duplo** de verdade: dois blocos adjacentes do mesmo tier viram uma única unidade lógica.
-- **Baús gerados naturalmente também viram IcarusChests** — dungeons, minas abandonadas, vilas, templos, naufrágios, bastiões, cidades antigas, tesouros enterrados, o que a geração de mundo colocar: assim que o chunk gera pela primeira vez, o baú já nasce tier Normal, com o loot vanilla dele rolado e guardado dentro (a mesma tabela de loot que o jogo usaria, só que copiada pro conteúdo do plugin em vez de ficar esperando alguém abrir o inventário vanilla — que este plugin nunca deixa acontecer).
 - **Upgrades encaixáveis**, instalados direto na GUI do baú:
   - 🔍 **Filtro** — restringe quais itens o baú aceita.
   - 📦 **Stack** — deixa um slot acumular muito além do limite normal do item (até 16x no tier Netherite), com a quantidade real sempre visível na lore.
@@ -32,16 +32,16 @@ Inspirado no mod *Sophisticated Storage*, mas construído do zero como um plugin
 
 ## 🧱 Progressão dos baús
 
-| Tier | Capacidade | Slots de upgrade | Material do kit |
+| Tier | Capacidade | Slots de upgrade | Como conseguir |
 |---|---|---|---|
-| Normal | 27 | 1 | — (tier inicial) |
-| Cobre | 45 | 1 | 8× Lingote de Cobre |
-| Ferro | 54 | 2 | 8× Lingote de Ferro |
-| Ouro | 81 | 2 | 8× Lingote de Ouro |
-| Diamante | 108 | 3 | 8× Diamante |
-| Netherite | 135 | 4 | 4× Lingote de Netherite |
+| Normal | 27 | 1 | 1× Baú + 1× Redstone → coloque o resultado |
+| Cobre | 45 | 1 | Kit de Upgrade: Cobre (8× Lingote de Cobre) |
+| Ferro | 54 | 2 | Kit de Upgrade: Ferro (8× Lingote de Ferro) |
+| Ouro | 81 | 2 | Kit de Upgrade: Ouro (8× Lingote de Ouro) |
+| Diamante | 108 | 3 | Kit de Upgrade: Diamante (8× Diamante) |
+| Netherite | 135 | 4 | Kit de Upgrade: Netherite (4× Lingote de Netherite) |
 
-Cada tier evolui craftando um kit de upgrade e usando shift + botão direito no baú do tier anterior. Nenhum item se perde na evolução.
+Cada tier acima do Normal evolui craftando o kit de upgrade correspondente e usando shift + botão direito no baú do tier anterior. Nenhum item se perde na evolução.
 
 ## 🎒 Progressão das mochilas
 
@@ -118,7 +118,7 @@ Baú e mochila implementam a mesma interface (`StorageContainer`/`StorageTier`):
 - Hoppers só automatizam a entrada de itens num baú com tier, nunca a saída — puxar itens de dentro dele com hopper continua bloqueado (o inventário vanilla do bloco fica sempre vazio de propósito).
 - Stacks acima do limite normal (upgrade Stack) não existem no protocolo do Bedrock — o cliente Bedrock vê o limite normal do item, mesmo que o baú guarde mais por dentro.
 - Nenhuma receita do plugin (kits, upgrades, mochilas) aparece no livro de receitas *vanilla* do Minecraft — todas ficam só no Livro de Receitas próprio do IcarusChests (`/icaruschests recipebook`).
-- A conversão de baús naturais só pega chunks gerados *depois* de instalar o plugin — terreno que o mundo já tinha explorado/gerado antes disso continua com baús 100% vanilla (o servidor não sabe distinguir "chunk antigo" de "chunk que já rodou com o plugin instalado").
+- Colocar um Baú do IcarusChests direto do lado de um baú comum (não craftado a partir da receita) não os une — vanilla ainda mescla os dois visualmente numa única tela de baú duplo, mas só a metade do IcarusChests é gerenciada pelo plugin; a outra continua um inventário vanilla de verdade, separado do conteúdo mostrado na GUI custom. Evite colocar os dois tipos adjacentes.
 
 ## 📜 Créditos
 

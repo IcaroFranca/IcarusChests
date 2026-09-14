@@ -58,6 +58,14 @@ public final class NamespacedKeys {
     /** Tag on a backpack item's PDC identifying its {@code BackpackTier} ordinal. */
     public static NamespacedKey BACKPACK_TIER;
 
+    /**
+     * Tag on a starter chest item's PDC (see {@code StarterChestRegistry}): present (value {@code
+     * 1}) only on the item crafted from a chest + redstone — the one and only item that turns a
+     * placed chest block into a brand-new IcarusChest. A plain chest placed from anywhere else
+     * never carries this and is left completely untouched.
+     */
+    public static NamespacedKey CHEST_STARTER;
+
     public static void init(JavaPlugin plugin) {
         TIER = new NamespacedKey(plugin, "tier");
         CHEST_ID = new NamespacedKey(plugin, "chest_id");
@@ -72,5 +80,6 @@ public final class NamespacedKeys {
         CONTROL_BUTTON = new NamespacedKey(plugin, "control_button");
         BACKPACK_ID = new NamespacedKey(plugin, "backpack_id");
         BACKPACK_TIER = new NamespacedKey(plugin, "backpack_tier");
+        CHEST_STARTER = new NamespacedKey(plugin, "chest_starter");
     }
 }
