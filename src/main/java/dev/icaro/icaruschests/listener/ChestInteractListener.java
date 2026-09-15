@@ -99,19 +99,14 @@ public final class ChestInteractListener implements Listener {
 
     /**
      * Turns {@code block} — a plain, not-yet-tagged chest — into a brand-new IcarusChest at {@link
-     * ChestTier#NORMAL}, consuming one starter kit. Rejects outright (no kit consumed) if {@code
-     * block} is directly adjacent to a plain chest that isn't one of ours ({@code
-     * ChestPlaceListener} already keeps this from arising when the plain chest is placed second,
-     * but the starter kit can still be the one to introduce it if applied carelessly) or to an
-     * IcarusChest of a different tier — vanilla would still visually merge an incompatible pair
-     * either way.
+     * ChestTier#NORMAL}, consuming one starter kit; links as the secondary half of an adjacent,
+     * still-single primary if one is found (see {@code ChestTaggingService#findAdjacentPrimary}) —
+     * this is what makes a genuine Minecraft double chest (both halves starting out plain) end up
+     * doubled: each half costs its own kit, applied one at a time, in either order. Rejects outright
+     * (no kit consumed) only if the adjacent primary is a different tier — vanilla would still
+     * visually merge an incompatible pair either way.
      */
     private void handleStarterKitApply(Player player, Block block, ItemStack kit) {
-        if (taggingService.hasUntaggedChestNeighbor(block)) {
-            player.sendMessage(Component.text(
-                    "Nao e possivel transformar um bau encostado a um bau comum.", NamedTextColor.RED));
-            return;
-        }
         Optional<IcarusChest> neighborPrimary = taggingService.findAdjacentPrimary(block);
         if (neighborPrimary.isPresent() && neighborPrimary.get().getTier() != ChestTier.NORMAL) {
             player.sendMessage(Component.text(

@@ -23,8 +23,8 @@ import java.util.logging.Level;
  * primary at {@link ChestTier#NORMAL}, or linked as a double chest's secondary half if adjacent to
  * an existing, still-single primary of the same tier. Used only by {@code ChestInteractListener},
  * which applies a {@code StarterChestRegistry} kit to an already-placed, not-yet-tagged chest —
- * see that class for the validation (adjacent plain/mismatched-tier neighbor) that runs before
- * this is ever called at all.
+ * see that class for the one validation (mismatched-tier neighbor) that runs before this is ever
+ * called at all.
  */
 public final class ChestTaggingService {
 
@@ -63,25 +63,6 @@ public final class ChestTaggingService {
             }
         }
         return Optional.empty();
-    }
-
-    /**
-     * Whether {@code block} has any horizontally-adjacent {@code Material.CHEST} neighbor that
-     * ISN'T one of ours — the situation that would let vanilla visually/functionally merge a
-     * genuine plain chest with what's about to become (or already is) an IcarusChest, mixing a
-     * real, usable vanilla inventory with the tagged chest's own real inventory (permanently empty
-     * by design). {@code ChestPlaceListener} already keeps this from arising when a plain chest is
-     * placed near an existing IcarusChest; this is the mirror check for the other direction — a
-     * starter kit about to tag a chest that happens to already be next to a plain one.
-     */
-    public boolean hasUntaggedChestNeighbor(Block block) {
-        for (BlockFace face : BlockFaces.HORIZONTAL) {
-            Block neighbor = block.getRelative(face);
-            if (neighbor.getType() == Material.CHEST && !chestManager.isTaggedChest(neighbor)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

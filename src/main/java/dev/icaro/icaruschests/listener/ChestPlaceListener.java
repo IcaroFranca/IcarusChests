@@ -21,10 +21,9 @@ import org.bukkit.event.block.BlockPlaceEvent;
  *
  * <p>Turning a chest into an IcarusChest no longer happens at placement at all — see {@code
  * ChestInteractListener}, which applies a {@code StarterChestRegistry} kit to an already-placed,
- * plain chest instead. This listener exists purely to keep that later conversion (and the
- * double-chest linking it can trigger) safe, by never letting an incompatible plain neighbor come
- * to exist next to a tagged chest in the first place — see {@code ChestTaggingService
- * #hasUntaggedChestNeighbor} for the mirror check on the kit-application side.
+ * plain chest instead (each half of a double chest costs its own kit, applied one at a time — see
+ * {@code ChestTaggingService#findAdjacentPrimary}). This listener exists purely to keep an already
+ * *fully* IcarusChest pair from ever growing a stray plain third neighbor after the fact.
  */
 public final class ChestPlaceListener implements Listener {
 
